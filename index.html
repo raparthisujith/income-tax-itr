@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ITR-3 Tax Calculator — Old vs New Regime · FY 2025-26</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --bg:#0B1220;
+    --surface:#121A2E;
+    --surface2:#182142;
+    --surface3:#1D2850;
+    --border:#2A3556;
+    --border-soft:#212B4A;
+    --text:#E8ECF5;
+    --muted:#8A94B3;
+    --muted2:#5F6A8C;
+    --accent:#D4A24C;
+    --accent-soft:#3A3020;
+    --old:#6FA8DC;
+    --old-soft:#182A3D;
+    --new:#4FBF8F;
+    --new-soft:#132E26;
+    --new-soft2:#0F2A22;
+    --danger:#E2725B;
+    --danger-soft:#3A1F1A;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, #16203D 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, #142238 0%, transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding:40px 20px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;}
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11.5px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--accent);
+    display:flex;align-items:center;gap:10px;
+    margin-bottom:14px;
+  }
+  .eyebrow::before{content:"";width:22px;height:1px;background:var(--accent);}
+  h1{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:42px;
+    line-height:1.08;
+    margin:0 0 10px;
+    letter-spacing:-0.01em;
+  }
+  h1 em{font-style:italic;font-weight:500;color:var(--accent);}
+  .subtitle{color:var(--muted);font-size:15px;max-width:620px;line-height:1.6;margin-bottom:10px;}
+
+  .profile-chip{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--accent-soft);border:1px solid #4A3A20;color:var(--muted);
+    font-size:12.5px;padding:7px 12px;border-radius:20px;margin-bottom:8px;
+  }
+  .profile-chip b{color:var(--accent);font-weight:600;}
+  .profile-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);}
+  .switch-link{
+    background:none;border:none;color:var(--muted2);text-decoration:underline;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;padding:0;margin-left:4px;
+  }
+  .switch-link:hover{color:var(--accent);}
+
+  .overlay{
+    position:fixed;inset:0;background:rgba(6,9,18,.86);backdrop-filter:blur(6px);
+    display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;
+  }
+  .overlay.hidden{display:none;}
+  .overlay-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:34px 32px;max-width:440px;width:100%;
+  }
+  .overlay-title{font-family:'Fraunces',serif;font-size:24px;font-weight:600;margin:0 0 10px;}
+  .overlay-sub{font-size:13.5px;color:var(--muted);line-height:1.6;margin:0 0 22px;}
+  .overlay-form-stack{display:flex;flex-direction:column;gap:10px;}
+  .overlay-form-stack input{
+    background:var(--surface2);border:1px solid var(--border);color:var(--text);
+    font-family:'IBM Plex Mono',monospace;font-size:14px;padding:12px 14px;border-radius:9px;outline:none;
+  }
+  .overlay-form-stack input:focus{border-color:var(--accent);}
+  .submit-btn.wide{width:100%;padding:12px;font-size:13px;margin-top:2px;}
+  .overlay-msg{font-size:12.5px;color:var(--muted);min-height:18px;margin:12px 0 0;}
+  .overlay-msg.error{color:var(--danger);}
+  .overlay-msg.success{color:var(--new);}
+  .overlay-toggle{font-size:12.5px;color:var(--muted2);margin:10px 0 0;text-align:center;}
+  .overlay-toggle .switch-link{font-size:12.5px;color:var(--accent);margin-left:4px;}
+
+  .save-status{
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--muted2);
+    display:flex;align-items:center;gap:8px;padding-top:6px;white-space:nowrap;
+  }
+  .save-dot{width:6px;height:6px;border-radius:50%;background:var(--muted2);}
+  .save-status.saved .save-dot{background:var(--new);}
+  .save-status.saving .save-dot{background:var(--accent);}
+  .reset-link{
+    background:none;border:none;color:var(--muted2);font-family:'IBM Plex Mono',monospace;
+    font-size:11px;text-decoration:underline;cursor:pointer;padding:0;margin-top:6px;
+  }
+  .reset-link:hover{color:var(--danger);}
+
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border-soft);
+    border-radius:14px;
+    padding:26px 28px;
+    margin-bottom:20px;
+  }
+  .schedule-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-bottom:18px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--border-soft);
+    flex-wrap:wrap;gap:8px;
+  }
+  .schedule-title{display:flex;align-items:baseline;gap:10px;}
+  .schedule-code{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--accent);
+    background:var(--accent-soft);
+    padding:3px 8px;
+    border-radius:5px;
+    letter-spacing:.05em;
+  }
+  .schedule-title h2{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:20px;
+    margin:0;
+  }
+  .schedule-note{font-size:12.5px;color:var(--muted2);}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid,.grid3{grid-template-columns:1fr;}}
+
+  .field label{
+    font-size:12.5px;color:var(--muted);margin-bottom:7px;
+    display:flex;justify-content:space-between;align-items:baseline;
+  }
+  .field label .cap{font-size:10.5px;color:var(--muted2);font-family:'IBM Plex Mono',monospace;}
+  .field .inputwrap{position:relative;}
+  .field .inputwrap .rs{
+    position:absolute;left:14px;top:50%;transform:translateY(-50%);
+    color:var(--muted2);font-family:'IBM Plex Mono',monospace;font-size:14px;
+  }
+  .field input, .field select{
+    width:100%;
+    background:var(--surface2);
+    border:1px solid var(--border);
+    color:var(--text);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:15px;
+    padding:11px 12px 11px 30px;
+    border-radius:9px;
+    outline:none;
+    transition:border-color .15s;
+  }
+  .field select{padding-left:12px;font-family:'Inter',sans-serif;font-size:14px;}
+  .field input:focus, .field select:focus{border-color:var(--accent);}
+  .field input::placeholder{color:var(--muted2);}
+
+  .advanced-toggle{
+    display:inline-flex;align-items:center;gap:8px;
+    background:none;border:1px dashed var(--border);
+    color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12.5px;
+    padding:9px 14px;border-radius:8px;cursor:pointer;margin-top:4px;
+  }
+  .advanced-toggle:hover{border-color:var(--accent);color:var(--accent);}
+  #cgFields{display:none;}
+  #cgFields.open{display:block;}
+
+  .pillrow{display:flex;gap:8px;flex-wrap:wrap;}
+  .pill{
+    padding:9px 14px;border-radius:20px;border:1px solid var(--border);
+    background:var(--surface2);color:var(--muted);font-size:13px;cursor:pointer;
+  }
+  .pill.active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+
+  /* BP summary */
+  .bp-summary{
+    display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;
+    background:var(--surface2);border:1px solid var(--border-soft);border-radius:12px;
+    padding:18px 22px;margin-bottom:20px;
+  }
+  .bp-summary .item .lbl{font-size:11px;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+  .bp-summary .item .amt{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;}
+  .bp-summary .item.income .amt{color:var(--new);}
+  .bp-summary .item.expense .amt{color:var(--danger);}
+  .bp-summary .item.net .amt{color:var(--accent);font-size:24px;}
+
+  /* toolbar */
+  .ledger-toolbar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
+  .btn-add{
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;border-radius:8px;
+    padding:10px 16px;cursor:pointer;border:1px solid transparent;font-weight:600;
+    display:inline-flex;align-items:center;gap:6px;
+  }
+  .btn-add.income{background:var(--new-soft);border-color:#2C5C48;color:var(--new);}
+  .btn-add.income:hover{border-color:var(--new);}
+  .btn-add.expense{background:var(--danger-soft);border-color:#5C382F;color:var(--danger);}
+  .btn-add.expense:hover{border-color:var(--danger);}
+
+  .entry-form{
+    display:none;background:var(--surface3);border:1px solid var(--border);border-radius:10px;
+    padding:18px;margin-bottom:16px;
+  }
+  .entry-form.open{display:block;}
+  .entry-form .row{display:grid;grid-template-columns:100px 1fr 1fr 140px auto;gap:10px;align-items:end;}
+  @media(max-width:760px){.entry-form .row{grid-template-columns:1fr 1fr;}}
+  .entry-form label{display:block;font-size:10.5px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;}
+  .entry-form input, .entry-form select{
+    width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+    font-family:'Inter',sans-serif;font-size:13px;padding:9px 10px;border-radius:7px;outline:none;
+  }
+  .entry-form input[type=number]{font-family:'IBM Plex Mono',monospace;}
+  .entry-form input:focus, .entry-form select:focus{border-color:var(--accent);}
+  .entry-form .submit-btn{
+    background:var(--accent);color:#241C0B;border:none;border-radius:7px;
+    padding:9px 14px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:700;cursor:pointer;
+    white-space:nowrap;
+  }
+  .entry-form .submit-btn:hover{filter:brightness(1.08);}
+  .entry-form .hint{font-size:11px;color:var(--muted2);margin-top:10px;line-height:1.6;}
+
+  .entries-table{width:100%;border-collapse:collapse;margin-bottom:8px;}
+  .entries-table th{
+    text-align:left;font-size:10.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;
+    padding:8px 10px;border-bottom:1px solid var(--border-soft);font-weight:600;
+  }
+  .entries-table td{
+    padding:10px;font-size:13px;border-bottom:1px solid var(--border-soft);vertical-align:middle;
+  }
+  .entries-table tr:last-child td{border-bottom:none;}
+  .entries-table .amt-cell{font-family:'IBM Plex Mono',monospace;text-align:right;white-space:nowrap;}
+  .entries-table .desc-cell{color:var(--muted);}
+  .type-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;border-radius:5px;
+    text-transform:uppercase;letter-spacing:.04em;
+  }
+  .type-tag.income{background:var(--new-soft);color:var(--new);}
+  .type-tag.expense{background:var(--danger-soft);color:var(--danger);}
+  .del-btn{
+    background:none;border:none;color:var(--muted2);cursor:pointer;font-size:15px;padding:2px 6px;
+    border-radius:5px;line-height:1;
+  }
+  .del-btn:hover{color:var(--danger);background:var(--danger-soft);}
+  .empty-state{
+    text-align:center;padding:26px;color:var(--muted2);font-size:13px;
+    border:1px dashed var(--border);border-radius:10px;
+  }
+
+  .month-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:18px;}
+  @media(max-width:700px){.month-grid{grid-template-columns:repeat(3,1fr);}}
+  .month-cell{
+    background:var(--surface2);border:1px solid var(--border-soft);border-radius:8px;
+    padding:10px 8px;text-align:center;
+  }
+  .month-cell .m{font-size:10.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
+  .month-cell .v{font-family:'IBM Plex Mono',monospace;font-size:12.5px;}
+  .month-cell .v.pos{color:var(--new);}
+  .month-cell .v.neg{color:var(--danger);}
+  .month-cell .v.zero{color:var(--muted2);}
+
+  /* Results */
+  .results-head{margin:44px 0 18px;text-align:center;}
+  .results-head .eyebrow{justify-content:center;}
+  .results-head .eyebrow::before{display:none;}
+  .results-head h2{font-family:'Fraunces',serif;font-size:26px;font-weight:600;margin:0;}
+
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:760px){.compare{grid-template-columns:1fr;}}
+
+  .regime-card{border-radius:16px;padding:0;overflow:hidden;border:1px solid var(--border-soft);position:relative;}
+  .regime-card.old{background:linear-gradient(180deg,var(--old-soft) 0%, var(--surface) 220px);}
+  .regime-card.new{background:linear-gradient(180deg,var(--new-soft2) 0%, var(--surface) 220px);}
+  .regime-card.winner{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent), 0 20px 50px -20px rgba(212,162,76,.35);}
+
+  .regime-top{padding:22px 26px 18px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .regime-name{font-family:'Fraunces',serif;font-size:19px;font-weight:600;}
+  .regime-card.old .regime-name{color:var(--old);}
+  .regime-card.new .regime-name{color:var(--new);}
+  .regime-sub{font-size:11.5px;color:var(--muted2);margin-top:2px;font-family:'IBM Plex Mono',monospace;}
+  .badge{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;
+    text-transform:uppercase;background:var(--accent);color:#241C0B;
+    padding:4px 9px;border-radius:6px;font-weight:600;
+  }
+
+  .payable{padding:0 26px 20px;}
+  .payable .amt{font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;letter-spacing:-.01em;}
+  .payable .lbl{font-size:11.5px;color:var(--muted);margin-top:2px;}
+
+  .ledger{padding:18px 26px 24px;border-top:1px solid var(--border-soft);}
+  .ledger-row{display:flex;align-items:baseline;gap:8px;padding:5px 0;font-size:13px;}
+  .ledger-row .lbl{color:var(--muted);white-space:nowrap;}
+  .ledger-row .dots{flex:1;border-bottom:1px dotted var(--border);margin-bottom:4px;min-width:10px;}
+  .ledger-row .val{font-family:'IBM Plex Mono',monospace;white-space:nowrap;color:var(--text);}
+  .ledger-row.total{border-top:1px solid var(--border-soft);margin-top:8px;padding-top:12px;font-size:14.5px;}
+  .ledger-row.total .lbl{color:var(--text);font-weight:600;}
+  .ledger-row.total .val{font-weight:600;font-size:15px;}
+  .ledger-row.neg .val{color:var(--danger);}
+
+  .savings-strip{
+    max-width:1080px;margin:20px auto 0;text-align:center;
+    font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);
+    background:var(--surface);border:1px solid var(--border-soft);border-radius:12px;padding:14px;
+  }
+  .savings-strip b{color:var(--accent);}
+
+  footer{
+    max-width:1080px;margin:36px auto 0;font-size:12px;color:var(--muted2);
+    line-height:1.7;border-top:1px solid var(--border-soft);padding-top:18px;
+  }
+  footer b{color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div class="overlay" id="profileOverlay">
+  <div class="overlay-card">
+    <div class="eyebrow" style="margin-bottom:16px;">Computation Sheet · ITR-3</div>
+    <h2 class="overlay-title" id="authTitle">Sign in to your sheet</h2>
+    <p class="overlay-sub" id="authSub">Your entries are saved to your account — sign in from any device to pick up where you left off.</p>
+    <div class="overlay-form-stack">
+      <input type="email" id="authEmail" placeholder="you@email.com" autocomplete="email">
+      <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password">
+      <button class="submit-btn wide" id="authSubmit" type="button">Sign in</button>
+    </div>
+    <p class="overlay-msg" id="authMsg"></p>
+    <p class="overlay-toggle">
+      <span id="authToggleText">Don't have an account?</span>
+      <button class="switch-link" id="authToggleBtn" type="button">Create one</button>
+    </p>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">Computation Sheet · ITR-3</div>
+      <h1>Old vs <em>New</em> Regime,<br>side by side.</h1>
+      <p class="subtitle">Log business income and expenses month by month, add your other income heads, and compare tax payable under both regimes — figures follow FY 2025-26 (AY 2026-27) rates. Everything you enter is saved automatically.</p>
+    </div>
+    <div style="text-align:right;">
+      <div class="profile-chip" id="profileChip" style="display:none;">
+        <span class="profile-dot"></span>
+        <span id="profileLabel"></span>
+        <button class="switch-link" id="signOutBtn" type="button">Sign out</button>
+      </div>
+      <div class="save-status" id="saveStatus"><span class="save-dot"></span><span id="saveStatusText">Loading…</span></div>
+      <button class="reset-link" id="resetBtn" type="button">Clear my data</button>
+    </div>
+  </div>
+
+  <!-- Age -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">PART A</span><h2>Assessee category</h2></div>
+      <div class="schedule-note">Affects old-regime exemption limit only</div>
+    </div>
+    <div class="pillrow" id="agePills">
+      <div class="pill active" data-age="below60">Below 60 years</div>
+      <div class="pill" data-age="senior">Senior citizen (60–79)</div>
+      <div class="pill" data-age="supersenior">Super senior (80+)</div>
+    </div>
+  </div>
+
+  <!-- Schedule BP: month-wise income & expenses -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SCHEDULE BP</span><h2>Business income &amp; expenses</h2></div>
+      <div class="schedule-note">Month-wise · net profit flows into the slab-rate computation</div>
+    </div>
+
+    <div class="bp-summary">
+      <div class="item income"><div class="lbl">Total income</div><div class="amt" id="sumIncome">₹0</div></div>
+      <div class="item expense"><div class="lbl">Total expenses</div><div class="amt" id="sumExpense">₹0</div></div>
+      <div class="item net"><div class="lbl">Net business profit</div><div class="amt" id="sumNet">₹0</div></div>
+    </div>
+
+    <div class="ledger-toolbar">
+      <button class="btn-add income" id="showIncomeForm" type="button">+ Add income</button>
+      <button class="btn-add expense" id="showExpenseForm" type="button">+ Add expense</button>
+    </div>
+
+    <div class="entry-form" id="incomeForm">
+      <div class="row">
+        <div><label>Month</label><select id="incMonth"></select></div>
+        <div><label>Category</label><select id="incCategory"></select></div>
+        <div><label>Description</label><input type="text" id="incDesc" placeholder="Optional"></div>
+        <div><label>Amount</label><input type="number" id="incAmount" placeholder="0" min="0"></div>
+        <button class="submit-btn" id="incSubmit" type="button">Add</button>
+      </div>
+    </div>
+
+    <div class="entry-form" id="expenseForm">
+      <div class="row">
+        <div><label>Month</label><select id="expMonth"></select></div>
+        <div><label>Category</label><select id="expCategory"></select></div>
+        <div><label>Description</label><input type="text" id="expDesc" placeholder="Optional"></div>
+        <div><label>Amount</label><input type="number" id="expAmount" placeholder="0" min="0"></div>
+        <button class="submit-btn" id="expSubmit" type="button">Add</button>
+      </div>
+      <div class="hint">Common allowable heads under Section 37(1) — salaries, rent, depreciation, professional fees, and any other expense laid out wholly and exclusively for the business. Keep supporting bills/invoices for each entry.</div>
+    </div>
+
+    <div id="entriesTableWrap"></div>
+    <div class="month-grid" id="monthGrid"></div>
+  </div>
+
+  <!-- Other income heads -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SCHEDULE S / HP / OS</span><h2>Other income heads</h2></div>
+      <div class="schedule-note">Taxed at slab rates</div>
+    </div>
+    <div class="grid">
+      <div class="field">
+        <label>Gross salary (if any) <span class="cap">Schedule S</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="salary" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Net income from house property <span class="cap">Schedule HP · loss allowed</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hp" placeholder="0, or negative for a loss"></div>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:20px;">
+      <div class="field">
+        <label>Other income — interest, FD, etc. <span class="cap">Schedule OS</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="other" placeholder="0" min="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule CG -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SCHEDULE CG</span><h2>Capital gains</h2></div>
+      <div class="schedule-note">Optional — taxed at special rates, same under both regimes</div>
+    </div>
+    <button class="advanced-toggle" id="cgToggle" type="button">+ Add capital gains</button>
+    <div id="cgFields" style="margin-top:18px;">
+      <div class="grid3">
+        <div class="field">
+          <label>STCG — equity / equity MF <span class="cap">Sec 111A · 20%</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="stcgEq" placeholder="0" min="0"></div>
+        </div>
+        <div class="field">
+          <label>LTCG — equity / equity MF <span class="cap">Sec 112A · 12.5%</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="ltcgEq" placeholder="0" min="0"></div>
+        </div>
+        <div class="field">
+          <label>LTCG — other assets <span class="cap">debt/property · 12.5%</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="ltcgOther" placeholder="0" min="0"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Schedule VI-A -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SCHEDULE VI-A</span><h2>Deductions &amp; exemptions</h2></div>
+      <div class="schedule-note" style="color:var(--old);">Old regime only</div>
+    </div>
+    <div class="grid3" style="row-gap:20px;">
+      <div class="field">
+        <label>Section 80C <span class="cap">cap ₹1,50,000</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="s80c" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Section 80D — health insurance <span class="cap">typ. ₹25k–1L</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="s80d" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>NPS — Section 80CCD(1B) <span class="cap">cap ₹50,000</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="nps" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Home loan interest <span class="cap">Sec 24(b) · cap ₹2,00,000</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="homeint" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Savings a/c interest <span class="cap" id="ttaCap">Sec 80TTA · cap ₹10,000</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="s80tta" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Education loan interest <span class="cap">Sec 80E · no cap</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="s80e" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Donations <span class="cap">Sec 80G · as eligible</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="s80g" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Rent paid, no HRA <span class="cap">Sec 80GG · cap ₹60,000</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="s80gg" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Other Chapter VI-A <span class="cap">80U / 80DD…</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="otherVIA" placeholder="0" min="0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-head">
+    <div class="eyebrow">Result</div>
+    <h2>Tax payable, computed both ways</h2>
+  </div>
+
+  <div class="compare" id="compare"></div>
+  <div class="savings-strip" id="savingsStrip"></div>
+
+  <footer>
+    <b>Basis:</b> Finance Act 2025 rates for FY 2025-26 (AY 2026-27) — new regime slabs of ₹0–4L nil, 5%/10%/15%/20%/25%/30% thereafter with a ₹75,000 standard deduction and Section 87A rebate up to ₹60,000 (nil tax to ₹12L); old regime unchanged with a ₹50,000 standard deduction and ₹12,500 rebate up to ₹5L. Health &amp; education cess of 4% applies to both. Surcharge (10%/15%/25%, capped at 25% in the new regime) is applied where total income exceeds ₹50L, <b>without marginal relief</b> — near a threshold, actual tax may be a little lower than shown. Section 87A rebate is applied only against tax on normal-rate income, not against Sec 111A/112A capital gains tax. Under the new regime a house-property loss cannot be set off against other heads, and Chapter VI-A deductions (other than 80CCD(2)/80JJAA) aren't available at all. Section 80GG and 80D caps are simplified. This sheet is for planning only — it isn't tax advice, and doesn't replace a CA's sign-off on your actual return.
+  </footer>
+
+</div>
+
+<script>
+// ---- Fill these in from Supabase → Project Settings → API ----
+const SUPABASE_URL = 'https://wctasizazajoggikmshd.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_6wN8vafpwOIez63M8zEvxQ_8TelVB6i';
+const sb = (SUPABASE_URL.startsWith('http')) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+const MONTHS = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
+const INCOME_CATEGORIES = ['Sales / Service Revenue','Consulting & Professional Fees','Interest on Business Deposits','Other Business Income'];
+const EXPENSE_CATEGORIES = ['Salaries & Wages','Rent','Office & Administrative Expenses','Professional & Consultancy Fees','Travel & Conveyance','Marketing & Advertising','Depreciation','Interest on Business Loan','Repairs & Maintenance','Utilities & Communication','Bank Charges & Commission','Insurance Premium','Other Business Expense'];
+const SIMPLE_IDS = ['salary','hp','other','stcgEq','ltcgEq','ltcgOther','s80c','s80d','nps','homeint','s80tta','s80e','s80g','s80gg','otherVIA'];
+
+let age = 'below60';
+let incomeEntries = [];
+let expenseEntries = [];
+let saveTimer = null;
+let currentUserId = null;
+let currentUserEmail = null;
+let isSignUpMode = false;
+
+function populateSelect(id, options){
+  const el = document.getElementById(id);
+  el.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+}
+populateSelect('incMonth', MONTHS);
+populateSelect('expMonth', MONTHS);
+populateSelect('incCategory', INCOME_CATEGORIES);
+populateSelect('expCategory', EXPENSE_CATEGORIES);
+
+document.getElementById('agePills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#agePills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); age = p.dataset.age;
+  updateTtaCapLabel();
+  calculate(); scheduleSave();
+});
+function updateAgePillsUI(){
+  document.querySelectorAll('#agePills .pill').forEach(x=>x.classList.toggle('active', x.dataset.age===age));
+  updateTtaCapLabel();
+}
+function updateTtaCapLabel(){
+  document.getElementById('ttaCap').textContent = age==='below60' ? 'Sec 80TTA · cap ₹10,000' : 'Sec 80TTB · cap ₹50,000';
+}
+
+document.getElementById('cgToggle').addEventListener('click', ()=>{
+  const el = document.getElementById('cgFields');
+  const open = el.classList.toggle('open');
+  document.getElementById('cgToggle').textContent = open ? '− Hide capital gains' : '+ Add capital gains';
+});
+
+document.getElementById('showIncomeForm').addEventListener('click', ()=>{
+  document.getElementById('incomeForm').classList.toggle('open');
+  document.getElementById('expenseForm').classList.remove('open');
+});
+document.getElementById('showExpenseForm').addEventListener('click', ()=>{
+  document.getElementById('expenseForm').classList.toggle('open');
+  document.getElementById('incomeForm').classList.remove('open');
+});
+
+document.getElementById('incSubmit').addEventListener('click', ()=>{
+  const amt = parseFloat(document.getElementById('incAmount').value);
+  if(!amt || amt<=0) return;
+  incomeEntries.push({
+    id: 'i'+Date.now()+Math.random().toString(36).slice(2,7),
+    month: document.getElementById('incMonth').value,
+    category: document.getElementById('incCategory').value,
+    desc: document.getElementById('incDesc').value.trim(),
+    amount: amt
+  });
+  document.getElementById('incAmount').value = '';
+  document.getElementById('incDesc').value = '';
+  renderEntries(); calculate(); scheduleSave();
+});
+document.getElementById('expSubmit').addEventListener('click', ()=>{
+  const amt = parseFloat(document.getElementById('expAmount').value);
+  if(!amt || amt<=0) return;
+  expenseEntries.push({
+    id: 'e'+Date.now()+Math.random().toString(36).slice(2,7),
+    month: document.getElementById('expMonth').value,
+    category: document.getElementById('expCategory').value,
+    desc: document.getElementById('expDesc').value.trim(),
+    amount: amt
+  });
+  document.getElementById('expAmount').value = '';
+  document.getElementById('expDesc').value = '';
+  renderEntries(); calculate(); scheduleSave();
+});
+
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(!currentUserId) return;
+  if(!confirm('Clear all your saved income, expenses and inputs? This cannot be undone.')) return;
+  incomeEntries = []; expenseEntries = []; age = 'below60';
+  SIMPLE_IDS.forEach(id => document.getElementById(id).value = '');
+  updateAgePillsUI();
+  renderEntries(); calculate();
+  await saveState();
+  setSaveStatus('saved','Cleared');
+});
+
+document.getElementById('signOutBtn').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  currentUserId = null; currentUserEmail = null;
+  document.getElementById('profileChip').style.display = 'none';
+  document.getElementById('profileOverlay').classList.remove('hidden');
+});
+
+document.getElementById('authToggleBtn').addEventListener('click', ()=>{
+  isSignUpMode = !isSignUpMode;
+  document.getElementById('authTitle').textContent = isSignUpMode ? 'Create your account' : 'Sign in to your sheet';
+  document.getElementById('authSub').textContent = isSignUpMode
+    ? 'One login, saved automatically, reachable from any device.'
+    : 'Your entries are saved to your account — sign in from any device to pick up where you left off.';
+  document.getElementById('authSubmit').textContent = isSignUpMode ? 'Create account' : 'Sign in';
+  document.getElementById('authToggleText').textContent = isSignUpMode ? 'Already have an account?' : "Don't have an account?";
+  document.getElementById('authToggleBtn').textContent = isSignUpMode ? 'Sign in' : 'Create one';
+  document.getElementById('authMsg').textContent = '';
+});
+
+document.getElementById('authSubmit').addEventListener('click', submitAuth);
+document.getElementById('authPassword').addEventListener('keydown', e => { if(e.key==='Enter') submitAuth(); });
+
+async function submitAuth(){
+  const msgEl = document.getElementById('authMsg');
+  msgEl.className = 'overlay-msg';
+  if(!sb){
+    msgEl.className = 'overlay-msg error';
+    msgEl.textContent = 'Supabase isn\'t configured yet — add your project URL and anon key in the code.';
+    return;
+  }
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if(!email || !password){
+    msgEl.className = 'overlay-msg error';
+    msgEl.textContent = 'Enter both an email and a password.';
+    return;
+  }
+  document.getElementById('authSubmit').textContent = 'Please wait…';
+  if(isSignUpMode){
+    const { data, error } = await sb.auth.signUp({ email, password });
+    document.getElementById('authSubmit').textContent = 'Create account';
+    if(error){ msgEl.className='overlay-msg error'; msgEl.textContent = error.message; return; }
+    if(data.session){ await onSignedIn(data.session); }
+    else { msgEl.className='overlay-msg success'; msgEl.textContent = 'Check your email to confirm your account, then sign in.'; }
+  } else {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    document.getElementById('authSubmit').textContent = 'Sign in';
+    if(error){ msgEl.className='overlay-msg error'; msgEl.textContent = error.message; return; }
+    await onSignedIn(data.session);
+  }
+}
+
+async function onSignedIn(session){
+  currentUserId = session.user.id;
+  currentUserEmail = session.user.email;
+  document.getElementById('profileOverlay').classList.add('hidden');
+  document.getElementById('profileChip').style.display = 'inline-flex';
+  document.getElementById('profileLabel').textContent = currentUserEmail;
+  await loadProfileData();
+}
+
+SIMPLE_IDS.forEach(id => document.getElementById(id).addEventListener('input', ()=>{ calculate(); scheduleSave(); }));
+
+function num(id){ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? 0 : v; }
+function inr(n){
+  n = Math.round(n);
+  const neg = n < 0; n = Math.abs(n);
+  const s = n.toString();
+  let last3 = s.substring(s.length-3);
+  let rest = s.substring(0, s.length-3);
+  if(rest !== '') last3 = ',' + last3;
+  const formatted = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',') + last3;
+  return (neg?'-':'') + '₹' + formatted;
+}
+
+function renderEntries(){
+  const all = [
+    ...incomeEntries.map(e=>({...e, type:'income'})),
+    ...expenseEntries.map(e=>({...e, type:'expense'}))
+  ].sort((a,b)=> MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month));
+
+  const wrap = document.getElementById('entriesTableWrap');
+  if(all.length===0){
+    wrap.innerHTML = '<div class="empty-state">No entries yet — add your first month of business income or expenses above.</div>';
+  } else {
+    wrap.innerHTML = `
+      <table class="entries-table">
+        <thead><tr><th>Month</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+        <tbody>
+          ${all.map(e => `
+            <tr>
+              <td>${e.month}</td>
+              <td><span class="type-tag ${e.type}">${e.type}</span></td>
+              <td>${e.category}</td>
+              <td class="desc-cell">${e.desc || '—'}</td>
+              <td class="amt-cell">${inr(e.amount)}</td>
+              <td><button class="del-btn" data-id="${e.id}" data-type="${e.type}" title="Delete">✕</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    wrap.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', ()=>{
+      const id = btn.dataset.id, type = btn.dataset.type;
+      if(type==='income') incomeEntries = incomeEntries.filter(x=>x.id!==id);
+      else expenseEntries = expenseEntries.filter(x=>x.id!==id);
+      renderEntries(); calculate(); scheduleSave();
+    }));
+  }
+
+  const grid = document.getElementById('monthGrid');
+  grid.innerHTML = MONTHS.map(m => {
+    const inc = incomeEntries.filter(e=>e.month===m).reduce((s,e)=>s+e.amount,0);
+    const exp = expenseEntries.filter(e=>e.month===m).reduce((s,e)=>s+e.amount,0);
+    const net = inc - exp;
+    const cls = net>0 ? 'pos' : (net<0 ? 'neg' : 'zero');
+    return `<div class="month-cell"><div class="m">${m}</div><div class="v ${cls}">${inr(net)}</div></div>`;
+  }).join('');
+}
+
+function totalBusinessIncome(){
+  const inc = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  const exp = expenseEntries.reduce((s,e)=>s+e.amount,0);
+  document.getElementById('sumIncome').textContent = inr(inc);
+  document.getElementById('sumExpense').textContent = inr(exp);
+  document.getElementById('sumNet').textContent = inr(inc-exp);
+  return inc - exp;
+}
+
+function slabTax(income, slabs){
+  let tax = 0, prev = 0;
+  for(const s of slabs){
+    if(income > prev){
+      const chunk = Math.min(income, s.upto) - prev;
+      tax += chunk * s.rate;
+      prev = s.upto;
+    } else break;
+  }
+  return tax;
+}
+
+const NEW_SLABS = [
+  {upto:400000, rate:0},{upto:800000, rate:0.05},{upto:1200000, rate:0.10},
+  {upto:1600000, rate:0.15},{upto:2000000, rate:0.20},{upto:2400000, rate:0.25},
+  {upto:Infinity, rate:0.30},
+];
+const OLD_SLABS = {
+  below60: [{upto:250000,rate:0},{upto:500000,rate:0.05},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
+  senior:  [{upto:300000,rate:0},{upto:500000,rate:0.05},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
+  supersenior: [{upto:500000,rate:0},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
+};
+
+function getSurcharge(totalIncome, tax, isNew){
+  let rate = 0;
+  if(totalIncome > 50000000) rate = isNew ? 0.25 : 0.37;
+  else if(totalIncome > 20000000) rate = 0.25;
+  else if(totalIncome > 10000000) rate = 0.15;
+  else if(totalIncome > 5000000) rate = 0.10;
+  return tax * rate;
+}
+
+function computeRegime(isNew, businessIncome){
+  const salary = num('salary');
+  const hpRaw = num('hp');
+  const other = num('other');
+  const stcgEq = num('stcgEq');
+  const ltcgEq = num('ltcgEq');
+  const ltcgOther = num('ltcgOther');
+
+  const stdDed = salary > 0 ? (isNew ? 75000 : 50000) : 0;
+  const salaryTaxable = Math.max(salary - stdDed, 0);
+  const hp = isNew ? Math.max(hpRaw, 0) : Math.max(hpRaw, -200000);
+
+  let viaTotal = 0;
+  if(!isNew){
+    const s80c = Math.min(num('s80c'), 150000);
+    const s80d = num('s80d');
+    const nps = Math.min(num('nps'), 50000);
+    const homeint = Math.min(num('homeint'), 200000);
+    const ttaCap = age==='below60' ? 10000 : 50000;
+    const s80tta = Math.min(num('s80tta'), ttaCap);
+    const s80e = num('s80e');
+    const s80g = num('s80g');
+    const s80gg = Math.min(num('s80gg'), 60000);
+    const otherVIA = num('otherVIA');
+    viaTotal = s80c + s80d + nps + homeint + s80tta + s80e + s80g + s80gg + otherVIA;
+  }
+
+  let slabIncome = businessIncome + salaryTaxable + hp + other - viaTotal;
+  slabIncome = Math.max(slabIncome, 0);
+
+  const ltcgEqTaxable = Math.max(ltcgEq - 125000, 0);
+  const specialTax = stcgEq*0.20 + ltcgEqTaxable*0.125 + ltcgOther*0.125;
+  const specialIncomeGross = stcgEq + ltcgEq + ltcgOther;
+  const totalIncome = slabIncome + specialIncomeGross;
+
+  const slabs = isNew ? NEW_SLABS : OLD_SLABS[age];
+  const taxOnSlab = slabTax(slabIncome, slabs);
+
+  const rebateThreshold = isNew ? 1200000 : 500000;
+  const rebateCap = isNew ? 60000 : 12500;
+  let rebate = 0;
+  if(totalIncome <= rebateThreshold) rebate = Math.min(taxOnSlab, rebateCap);
+
+  const taxBeforeSurcharge = (taxOnSlab - rebate) + specialTax;
+  const surcharge = getSurcharge(totalIncome, taxBeforeSurcharge, isNew);
+  const cess = (taxBeforeSurcharge + surcharge) * 0.04;
+  const totalTax = taxBeforeSurcharge + surcharge + cess;
+
+  return {
+    business: businessIncome, salary, salaryTaxable, hp, other, viaTotal,
+    slabIncome, specialIncomeGross, specialTax, totalIncome,
+    taxOnSlab, rebate, surcharge, cess, totalTax
+  };
+}
+
+function ledgerRow(lbl, val, opts={}){
+  const cls = ['ledger-row', opts.total?'total':'', val<0?'neg':''].join(' ').trim();
+  return `<div class="${cls}"><span class="lbl">${lbl}</span><span class="dots"></span><span class="val">${inr(val)}</span></div>`;
+}
+
+function renderCard(r, isNew, isWinner){
+  const cls = isNew ? 'new' : 'old';
+  const name = isNew ? 'New Regime' : 'Old Regime';
+  const sub = isNew ? 'Sec 115BAC · default regime' : 'With Chapter VI-A deductions';
+  return `
+  <div class="regime-card ${cls} ${isWinner?'winner':''}">
+    <div class="regime-top">
+      <div><div class="regime-name">${name}</div><div class="regime-sub">${sub}</div></div>
+      ${isWinner ? '<span class="badge">Lower tax</span>' : ''}
+    </div>
+    <div class="payable">
+      <div class="amt">${inr(r.totalTax)}</div>
+      <div class="lbl">Total tax payable · effective rate ${(r.totalIncome>0 ? (r.totalTax/r.totalIncome*100).toFixed(1) : '0.0')}%</div>
+    </div>
+    <div class="ledger">
+      ${ledgerRow('Net business profit', r.business)}
+      ${r.salary>0 ? ledgerRow('Salary, after std. deduction', r.salaryTaxable) : ''}
+      ${ledgerRow('House property', r.hp)}
+      ${ledgerRow('Other sources', r.other)}
+      ${!isNew && r.viaTotal>0 ? ledgerRow('Less: Chapter VI-A deductions', -r.viaTotal) : ''}
+      ${ledgerRow('Net taxable income (slab)', r.slabIncome, {total:true})}
+      ${ledgerRow('Tax on slab income', r.taxOnSlab)}
+      ${r.specialIncomeGross>0 ? ledgerRow('Tax on capital gains', r.specialTax) : ''}
+      ${r.rebate>0 ? ledgerRow('Less: Rebate u/s 87A', -r.rebate) : ''}
+      ${r.surcharge>0 ? ledgerRow('Surcharge', r.surcharge) : ''}
+      ${ledgerRow('Health & education cess (4%)', r.cess)}
+      ${ledgerRow('Total tax payable', r.totalTax, {total:true})}
+    </div>
+  </div>`;
+}
+
+function calculate(){
+  const businessIncome = totalBusinessIncome();
+  const rOld = computeRegime(false, businessIncome);
+  const rNew = computeRegime(true, businessIncome);
+  const oldWins = rOld.totalTax < rNew.totalTax;
+  const newWins = rNew.totalTax < rOld.totalTax;
+
+  document.getElementById('compare').innerHTML = renderCard(rOld, false, oldWins) + renderCard(rNew, true, newWins);
+
+  const diff = Math.abs(rOld.totalTax - rNew.totalTax);
+  let strip = '';
+  if(rOld.totalTax === rNew.totalTax){
+    strip = `Both regimes work out equal at <b>${inr(rOld.totalTax)}</b>.`;
+  } else {
+    const better = oldWins ? 'Old Regime' : 'New Regime';
+    strip = `<b>${better}</b> saves you <b>${inr(diff)}</b> this year, compared to the other option.`;
+  }
+  document.getElementById('savingsStrip').innerHTML = strip;
+}
+
+/* ---------- persistence ---------- */
+function setSaveStatus(state, text){
+  const el = document.getElementById('saveStatus');
+  el.className = 'save-status ' + state;
+  document.getElementById('saveStatusText').textContent = text;
+}
+function scheduleSave(){
+  setSaveStatus('saving','Saving…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 500);
+}
+async function saveState(){
+  if(!currentUserId || !sb) return;
+  const data = {
+    age, incomeEntries, expenseEntries,
+    fields: Object.fromEntries(SIMPLE_IDS.map(id=>[id, document.getElementById(id).value]))
+  };
+  try{
+    const { error } = await sb.from('itr3_profiles').upsert({
+      user_id: currentUserId, data, updated_at: new Date().toISOString()
+    });
+    if(!error) setSaveStatus('saved','Saved');
+    else { console.error(error); setSaveStatus('','Save failed — try again'); }
+  }catch(e){
+    console.error('Supabase error:', e);
+    setSaveStatus('','Save failed — check your connection');
+  }
+}
+
+async function loadProfileData(){
+  age = 'below60'; incomeEntries = []; expenseEntries = [];
+  SIMPLE_IDS.forEach(id => document.getElementById(id).value = '');
+  try{
+    const { data: rows, error } = await sb.from('itr3_profiles').select('data').eq('user_id', currentUserId).maybeSingle();
+    if(error) throw error;
+    if(rows && rows.data){
+      const data = rows.data;
+      age = data.age || 'below60';
+      incomeEntries = data.incomeEntries || [];
+      expenseEntries = data.expenseEntries || [];
+      Object.entries(data.fields||{}).forEach(([id,val])=>{
+        const el = document.getElementById(id);
+        if(el && val) el.value = val;
+      });
+    }
+    setSaveStatus('saved', (incomeEntries.length||expenseEntries.length) ? 'Restored your data' : 'Ready');
+  }catch(e){
+    console.log('No saved data yet for this account:', e);
+    setSaveStatus('saved','Ready');
+  }
+  updateAgePillsUI();
+  renderEntries();
+  calculate();
+}
+
+async function bootstrap(){
+  if(!sb){
+    document.getElementById('authMsg').className = 'overlay-msg error';
+    document.getElementById('authMsg').textContent = 'Supabase isn\'t configured yet — add your project URL and anon key in the code, then reload.';
+    document.getElementById('profileOverlay').classList.remove('hidden');
+    return;
+  }
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){ await onSignedIn(session); }
+  else { document.getElementById('profileOverlay').classList.remove('hidden'); }
+
+  sb.auth.onAuthStateChange((event, session) => {
+    if(event === 'SIGNED_OUT'){
+      currentUserId = null; currentUserEmail = null;
+      document.getElementById('profileChip').style.display = 'none';
+      document.getElementById('profileOverlay').classList.remove('hidden');
+    }
+  });
+}
+
+bootstrap();
+</script>
+</body>
+</html>
