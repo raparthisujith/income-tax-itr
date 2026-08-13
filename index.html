@@ -10,6 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   :root{
     --bg:#0B1220;
@@ -42,8 +43,15 @@
     font-family:'Inter',sans-serif;
     -webkit-font-smoothing:antialiased;
     padding:40px 20px 80px;
+    transition:background .2s, color .2s;
   }
-  .wrap{max-width:1080px;margin:0 auto;}
+  .wrap{max-width:1320px;margin:0 auto;}
+  .layout-grid{display:grid;grid-template-columns:1fr 440px;gap:24px;align-items:start;}
+  .layout-right{position:sticky;top:12px;}
+  @media(max-width:960px){
+    .layout-grid{grid-template-columns:1fr;}
+    .layout-right{position:static;}
+  }
 
   .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;}
   .eyebrow{
@@ -330,16 +338,17 @@
   .month-cell .v{font-family:'IBM Plex Mono',monospace;font-size:12.5px;}
   .month-cell .v.pos{color:var(--new);}
   .month-cell .v.neg{color:var(--danger);}
+  .month-cell-year{border-color:var(--accent);background:var(--accent-soft);}
+  .month-cell-year .m{color:var(--accent);}
   .month-cell .v.zero{color:var(--muted2);}
 
   /* Results */
-  .results-head{margin:44px 0 18px;text-align:center;}
-  .results-head .eyebrow{justify-content:center;}
-  .results-head .eyebrow::before{display:none;}
-  .results-head h2{font-family:'Fraunces',serif;font-size:26px;font-weight:600;margin:0;}
+  .results-head{margin:0 0 16px;text-align:left;}
+  .results-head .eyebrow{justify-content:flex-start;}
+  .results-head .eyebrow::before{display:inline-block;}
+  .results-head h2{font-family:'Fraunces',serif;font-size:21px;font-weight:600;margin:0;}
 
-  .compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
-  @media(max-width:760px){.compare{grid-template-columns:1fr;}}
+  .compare{display:grid;grid-template-columns:1fr;gap:20px;}
 
   .regime-card{border-radius:16px;padding:0;overflow:hidden;border:1px solid var(--border-soft);position:relative;}
   .regime-card.old{background:linear-gradient(180deg,var(--old-soft) 0%, var(--surface) 220px);}
@@ -364,6 +373,12 @@
   .payable .stat.balance .amt.owe{color:var(--danger);}
   .payable .stat.balance .amt.refund{color:var(--new);}
 
+  .ledger-toggle{
+    display:block;width:calc(100% - 52px);margin:0 26px 18px;
+    background:none;border:1px dashed var(--border);color:var(--muted);
+    font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:8px;border-radius:7px;cursor:pointer;
+  }
+  .ledger-toggle:hover{border-color:var(--accent);color:var(--accent);}
   .ledger{padding:18px 26px 24px;border-top:1px solid var(--border-soft);}
   .ledger-row{display:flex;align-items:baseline;gap:8px;padding:5px 0;font-size:13px;}
   .ledger-row .lbl{color:var(--muted);white-space:nowrap;}
@@ -421,7 +436,7 @@
     <div>
       <div class="eyebrow">Computation Sheet · ITR-3</div>
       <h1>Old vs <em>New</em> Regime,<br>side by side.</h1>
-      <p class="subtitle">Log business income and expenses month by month, add your other income heads, and compare tax payable under both regimes — figures follow FY 2025-26 (AY 2026-27) rates. Everything you enter is saved automatically.</p>
+      <p class="subtitle">Log business income and expenses month by month, add your other income heads — <b style="color:var(--text);">Results</b> update live on the right as you go. Switch financial years anytime — each year's data, rates, and rules stay separate. Everything you enter is saved automatically.</p>
     </div>
     <div style="text-align:right;">
       <div class="profile-chip" id="profileChip" style="display:none;">
@@ -442,6 +457,18 @@
         <button class="reset-link" id="resetBtn" type="button">Clear my data</button>
       </div>
     </div>
+  </div>
+
+  <div class="layout-grid">
+  <div class="layout-left">
+
+  <!-- Financial Year -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">YEAR</span><h2>Financial year</h2></div>
+      <div class="schedule-note">Each year's numbers, rates and records stay completely separate</div>
+    </div>
+    <div class="pillrow" id="fyPills"></div>
   </div>
 
   <!-- Age -->
@@ -520,7 +547,7 @@
         <div><label>Amount</label><input type="number" id="expAmount" placeholder="0" min="0"></div>
         <button class="submit-btn" id="expSubmit" type="button">Add</button>
       </div>
-      <div class="hint">Common allowable heads under Section 37(1) — salaries, rent, depreciation, professional fees, and any other expense laid out wholly and exclusively for the business. Keep supporting bills/invoices for each entry.</div>
+      <div class="hint">Common allowable heads under Section 37(1) — salaries, rent, depreciation, professional fees, and any other expense laid out wholly and exclusively for the business. Keep supporting bills/invoices for each entry. <b>Vehicle loan interest is only deductible if the car is genuinely used for business</b> (Sec 36(1)(iii)) — a personal-use car loan gets no deduction at all under any section, so don't log it here if that's the case. Got a lump-sum item that only lands once a year — like a loan interest certificate — instead of monthly? Pick <b>"Full Year"</b> at the top of the month list.</div>
     </div>
 
     <div id="entriesTableWrap"></div>
@@ -551,20 +578,6 @@
       <div class="schedule-note">Based on today's date and the audit check above</div>
     </div>
     <div class="live-preview" id="filingResult"></div>
-  </div>
-
-  <!-- Compliance checklist -->
-  <div class="card">
-    <div class="schedule-head">
-      <div class="schedule-title"><span class="schedule-code">CHECKLIST</span><h2>A few more things to verify</h2></div>
-      <div class="schedule-note">Flags only — not computed by this tool</div>
-    </div>
-    <div style="font-size:12.5px;color:var(--muted);line-height:1.85;">
-      <div>→ <b>Foreign assets/accounts (Schedule FA):</b> if you (or Avanthi) hold any foreign bank account, brokerage, ESOP, or directorship abroad at any point in the year, disclosure is mandatory regardless of value — penalties under the Black Money Act are severe and separate from income tax penalties.</div>
-      <div style="margin-top:8px;">→ <b>Partner in a firm (Schedule IF):</b> if Healup or any other firm pays you remuneration/interest as a partner, that's reported separately from this business income, and since FY 2025-26 firms must deduct TDS at 10% on partner remuneration over ₹20,000/year under Sec 194T — check that's been credited.</div>
-      <div style="margin-top:8px;">→ <b>Books of account (Sec 44AA):</b> if you're not using presumptive taxation, income over ₹2.5L or turnover over ₹25L in any of the last 3 years means you're required to maintain regular books — not just this tracker, but statutory books your CA can certify.</div>
-      <div style="margin-top:8px;">→ <b>26AS/AIS reconciliation:</b> the TDS reconciliation tool further down only checks what you upload against what you've logged — it doesn't replace actually opening your AIS/26AS on the portal before filing.</div>
-    </div>
   </div>
 
   <!-- Presumptive taxation -->
@@ -609,15 +622,58 @@
     </div>
     <div class="grid" style="margin-top:20px;">
       <div class="field">
-        <label>Net income from house property <span class="cap">Schedule HP · loss allowed</span></label>
-        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hp" placeholder="0, or negative for a loss"></div>
-      </div>
-      <div class="field">
         <label>Other income — interest, FD, etc. <span class="cap">Schedule OS</span></label>
         <div class="inputwrap"><span class="rs">₹</span><input type="number" id="other" placeholder="0" min="0"></div>
       </div>
     </div>
     <p style="font-size:12px;color:var(--muted2);margin:14px 0 0;line-height:1.6;">Sec 80CCD(2) is the one deduction that survives the New Regime — up to 14% of salary (basic + DA) if your employer routes it into your NPS account. Cap enforced below at 14% of the salary entered above.</p>
+  </div>
+
+  <!-- Schedule HP -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SCHEDULE HP</span><h2>House property</h2></div>
+      <div class="schedule-note">One property · rent and loan interest treated differently by regime</div>
+    </div>
+    <div class="pillrow" id="hpTypePills" style="margin-bottom:18px;">
+      <div class="pill active" data-hp-type="none">No house property</div>
+      <div class="pill" data-hp-type="self">Self-occupied</div>
+      <div class="pill" data-hp-type="letout">Let-out / rented</div>
+    </div>
+
+    <div id="hpLetoutFields" style="display:none;">
+      <div class="grid3" style="row-gap:20px;">
+        <div class="field">
+          <label>Annual rent received <span class="cap">Gross Annual Value</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hpRent" placeholder="0" min="0"></div>
+        </div>
+        <div class="field">
+          <label>Municipal taxes paid <span class="cap">by owner, this year</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hpMunicipal" placeholder="0" min="0"></div>
+        </div>
+        <div class="field">
+          <label>Home loan interest <span class="cap">Sec 24(b) · no cap, both regimes</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hpLetoutInterest" placeholder="0" min="0"></div>
+        </div>
+      </div>
+      <div class="live-preview" id="hpLetoutPreview" style="margin-top:16px;"></div>
+    </div>
+
+    <div id="hpSelfFields" style="display:none;">
+      <div class="grid">
+        <div class="field">
+          <label>Home loan interest <span class="cap">Sec 24(b) · cap ₹2,00,000 · old regime only</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hpSelfInterest" placeholder="0" min="0"></div>
+        </div>
+        <div class="field">
+          <label>EV loan interest, if applicable <span class="cap">Sec 80EEB · cap ₹1,50,000</span></label>
+          <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hpEvInterest" placeholder="0" min="0"></div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--muted2);margin:14px 0 0;line-height:1.6;">Self-occupied interest only reduces tax under the Old Regime — the New Regime disallows it entirely, per the Income Tax Department's own FAQ on Sec 115BAC. Sec 80EEB only applies if the EV loan was sanctioned between 1 Apr 2019 and 31 Mar 2023 and you're still paying it off; that window is closed for new loans.</p>
+    </div>
+
+    <p style="font-size:12px;color:var(--muted2);margin:14px 0 0;line-height:1.6;" id="hpNoneNote">This tool handles one property at a time. If you own more than one — e.g. a self-occupied home and a rented-out flat — log the more financially significant one here and treat the other as a manual adjustment to "Other income" or note it separately for your CA.</p>
   </div>
 
   <!-- Schedule CG -->
@@ -651,6 +707,7 @@
       <div class="schedule-title"><span class="schedule-code">SCHEDULE VI-A</span><h2>Deductions &amp; exemptions</h2></div>
       <div class="schedule-note" style="color:var(--old);">Old regime only</div>
     </div>
+    <p style="font-size:12px;color:var(--muted2);margin:0 0 16px;line-height:1.6;">Home loan interest and EV loan interest (Sec 80EEB) moved to the Schedule HP card above, where they're tied to whether the property is self-occupied or let-out.</p>
     <div class="grid3" style="row-gap:20px;">
       <div class="field">
         <label>Section 80C <span class="cap">cap ₹1,50,000</span></label>
@@ -663,10 +720,6 @@
       <div class="field">
         <label>NPS — Section 80CCD(1B) <span class="cap">cap ₹50,000</span></label>
         <div class="inputwrap"><span class="rs">₹</span><input type="number" id="nps" placeholder="0" min="0"></div>
-      </div>
-      <div class="field">
-        <label>Home loan interest <span class="cap">Sec 24(b) · cap ₹2,00,000</span></label>
-        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="homeint" placeholder="0" min="0"></div>
       </div>
       <div class="field">
         <label>Savings a/c interest <span class="cap" id="ttaCap">Sec 80TTA · cap ₹10,000</span></label>
@@ -751,17 +804,73 @@
     <div id="tdsReconcileWrap" style="margin-top:16px;"></div>
   </div>
 
-  <!-- Results -->
-  <div class="results-head">
-    <div class="eyebrow">Result</div>
-    <h2>Tax payable, computed both ways</h2>
+  <!-- Filed documents -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">ARCHIVE</span><h2>Filed documents</h2></div>
+      <div class="schedule-note">Acknowledgement, computation sheet, filed ITR — per year</div>
+    </div>
+    <div id="docsSetupNote" style="display:none;" class="live-preview">Document storage isn't set up yet — this needs a one-time Supabase Storage bucket. Ask Claude for the setup steps, or check the message alongside this build.</div>
+    <input type="file" id="docFileInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none;">
+    <button class="btn-add income" id="docUploadBtn" type="button">+ Upload a document</button>
+    <span id="docFileName" style="font-size:12px;color:var(--muted2);margin-left:10px;"></span>
+    <div id="docsListWrap" style="margin-top:16px;"></div>
   </div>
 
+  <!-- Analytics -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">ANALYTICS</span><h2>Year on year</h2></div>
+      <div class="schedule-note">Compares whichever years you've logged data for</div>
+    </div>
+    <div id="analyticsEmptyState" class="empty-state" style="display:none;">Log data for at least one year to see charts here.</div>
+    <div id="analyticsCharts">
+      <div class="schedule-note" style="margin-bottom:8px;">This month vs the same month last year</div>
+      <div style="position:relative;height:280px;"><canvas id="chartMonthly"></canvas></div>
+      <div class="schedule-note" style="margin:26px 0 8px;">Totals by year</div>
+      <div style="position:relative;height:280px;"><canvas id="chartYearly"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Compliance checklist -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">CHECKLIST</span><h2>A few more things to verify</h2></div>
+      <div class="schedule-note">Flags only — not computed by this tool</div>
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.85;">
+      <div>→ <b>Foreign assets/accounts (Schedule FA):</b> if you (or Avanthi) hold any foreign bank account, brokerage, ESOP, or directorship abroad at any point in the year, disclosure is mandatory regardless of value — penalties under the Black Money Act are severe and separate from income tax penalties.</div>
+      <div style="margin-top:8px;">→ <b>Partner in a firm (Schedule IF):</b> if Healup or any other firm pays you remuneration/interest as a partner, that's reported separately from this business income, and since FY 2025-26 firms must deduct TDS at 10% on partner remuneration over ₹20,000/year under Sec 194T — check that's been credited.</div>
+      <div style="margin-top:8px;">→ <b>Books of account (Sec 44AA):</b> if you're not using presumptive taxation, income over ₹2.5L or turnover over ₹25L in any of the last 3 years means you're required to maintain regular books — not just this tracker, but statutory books your CA can certify.</div>
+      <div style="margin-top:8px;">→ <b>26AS/AIS reconciliation:</b> the TDS reconciliation tool further down only checks what you upload against what you've logged — it doesn't replace actually opening your AIS/26AS on the portal before filing.</div>
+    </div>
+  </div>
+
+  <!-- Rules & Updates -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">RULES</span><h2>Rules &amp; updates</h2></div>
+      <div class="schedule-note">What's built in, and how to keep it current</div>
+    </div>
+    <div id="rulesVerifiedNote" class="live-preview"></div>
+    <button class="btn-add income" id="refreshRulesBtn" type="button" style="margin-top:14px;">Check for rule changes</button>
+    <div id="refreshRulesResult" style="margin-top:14px;"></div>
+    <div class="schedule-note" style="margin:22px 0 10px;">Changelog</div>
+    <div id="rulesChangelog"></div>
+  </div>
+
+  </div>
+  <div class="layout-right">
+
+  <!-- Results -->
   <div class="compare" id="compare"></div>
   <div class="savings-strip" id="savingsStrip"></div>
 
+  </div>
+  </div>
+
   <footer>
-    <b>Basis:</b> Finance Act 2025 rates for FY 2025-26 (AY 2026-27) — new regime slabs of ₹0–4L nil, 5%/10%/15%/20%/25%/30% thereafter with a ₹75,000 standard deduction and Section 87A rebate up to ₹60,000 (nil tax to ₹12L); old regime unchanged with a ₹50,000 standard deduction and ₹12,500 rebate up to ₹5L. Health &amp; education cess of 4% applies to both. Surcharge (10%/15%/25%, capped at 25% in the new regime) is applied where total income exceeds ₹50L, <b>without marginal relief</b> — near a threshold, actual tax may be a little lower than shown. Section 87A rebate is applied only against tax on normal-rate income, not against Sec 111A/112A capital gains tax. Under the new regime a house-property loss cannot be set off against other heads, and Chapter VI-A deductions (other than 80CCD(2)/80JJAA) aren't available at all. Section 80GG and 80D caps are simplified. This sheet is for planning only — it isn't tax advice, and doesn't replace a CA's sign-off on your actual return. <b>Taxes already paid:</b> TDS logged against an income entry, other TDS (salary/interest/rent), advance tax instalments, and self-assessment tax are netted off the total liability to show your balance payable or refund. If less than 90% of the year's tax is paid by 31 March, or an instalment is short, interest under Sections 234B/234C can apply — this sheet doesn't compute that interest, so a shortfall near year-end is worth flagging to your CA.
+    <b>Basis:</b> <span id="footerBasisRates"></span> Health &amp; education cess of 4% applies to both. Surcharge (10%/15%/25%, capped at 25% in the new regime) is applied where total income exceeds ₹50L, <b>without marginal relief</b> — near a threshold, actual tax may be a little lower than shown. Section 87A rebate is applied only against tax on normal-rate income, not against Sec 111A/112A capital gains tax. Under the new regime a house-property loss cannot be set off against other heads, and Chapter VI-A deductions (other than 80CCD(2)/80JJAA) aren't available at all. Section 80GG and 80D caps are simplified. This sheet is for planning only — it isn't tax advice, and doesn't replace a CA's sign-off on your actual return. <b>Taxes already paid:</b> TDS logged against an income entry, other TDS (salary/interest/rent), advance tax instalments, and self-assessment tax are netted off the total liability to show your balance payable or refund. If less than 90% of the year's tax is paid by 31 March, or an instalment is short, interest under Sections 234B/234C can apply — this sheet doesn't compute that interest, so a shortfall near year-end is worth flagging to your CA.
   </footer>
 
 </div>
@@ -778,11 +887,90 @@ try{
 }catch(e){ console.error('Supabase client failed to initialise:', e); }
 
 const MONTHS = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
-const INCOME_CATEGORIES = ['Sales / Service Revenue','Consulting & Professional Fees','Interest on Business Deposits','Other Business Income'];
-const EXPENSE_CATEGORIES = ['Salaries & Wages','Rent','Office & Administrative Expenses','Professional & Consultancy Fees','Travel & Conveyance','Marketing & Advertising','Depreciation','Interest on Business Loan','Repairs & Maintenance','Utilities & Communication','Bank Charges & Commission','Insurance Premium','Other Business Expense'];
-const SIMPLE_IDS = ['salary','empNps','hp','other','stcgEq','ltcgEq','ltcgOther','s80c','s80d','nps','homeint','s80tta','s80e','s80g','s80gg','otherVIA','otherTds','tcs','selfAssess'];
+const MONTH_OPTIONS = [...MONTHS, 'Full Year'];
+function monthSortIndex(m){ const i = MONTHS.indexOf(m); return i === -1 ? 12 : i; }
 
+const OLD_SLABS = {
+  below60: [{upto:250000,rate:0},{upto:500000,rate:0.05},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
+  senior:  [{upto:300000,rate:0},{upto:500000,rate:0.05},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
+  supersenior: [{upto:500000,rate:0},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
+};
+
+const FY_CONFIG = {
+  '2024-25': {
+    label: 'FY 2024-25', ayLabel: 'AY 2025-26',
+    newSlabs: [
+      {upto:300000, rate:0},{upto:700000, rate:0.05},{upto:1000000, rate:0.10},
+      {upto:1200000, rate:0.15},{upto:1500000, rate:0.20},{upto:Infinity, rate:0.30},
+    ],
+    stdDedNew: 75000, stdDedOld: 50000,
+    rebateThresholdNew: 700000, rebateCapNew: 25000,
+    rebateThresholdOld: 500000, rebateCapOld: 12500,
+    itrDueNonAudit: '2025-09-16', itrDueAudit: '2025-12-10', belatedDeadline: '2025-12-31',
+    dueDateNote: '(CBDT extended this from the original 31 Jul/31 Oct dates — this filing season is closed now.)',
+    basisText: 'Finance Act 2024 rates for FY 2024-25 (AY 2025-26) — new regime slabs of ₹0–3L nil, 5%/10%/15%/20%/30% thereafter with a ₹75,000 standard deduction and Section 87A rebate up to ₹25,000 (nil tax to ₹7L); old regime unchanged with a ₹50,000 standard deduction and ₹12,500 rebate up to ₹5L.',
+    verifiedDate: '2026-08-13', projected: false,
+  },
+  '2025-26': {
+    label: 'FY 2025-26', ayLabel: 'AY 2026-27',
+    newSlabs: [
+      {upto:400000, rate:0},{upto:800000, rate:0.05},{upto:1200000, rate:0.10},
+      {upto:1600000, rate:0.15},{upto:2000000, rate:0.20},{upto:2400000, rate:0.25},
+      {upto:Infinity, rate:0.30},
+    ],
+    stdDedNew: 75000, stdDedOld: 50000,
+    rebateThresholdNew: 1200000, rebateCapNew: 60000,
+    rebateThresholdOld: 500000, rebateCapOld: 12500,
+    itrDueNonAudit: '2026-08-31', itrDueAudit: '2026-10-31', belatedDeadline: '2026-12-31',
+    dueDateNote: '',
+    basisText: 'Finance Act 2025 rates for FY 2025-26 (AY 2026-27) — new regime slabs of ₹0–4L nil, 5%/10%/15%/20%/25%/30% thereafter with a ₹75,000 standard deduction and Section 87A rebate up to ₹60,000 (nil tax to ₹12L); old regime unchanged with a ₹50,000 standard deduction and ₹12,500 rebate up to ₹5L.',
+    verifiedDate: '2026-08-13', projected: false,
+  },
+  '2026-27': {
+    label: 'FY 2026-27', ayLabel: 'Tax Year 2026-27 (new Act)',
+    newSlabs: [
+      {upto:400000, rate:0},{upto:800000, rate:0.05},{upto:1200000, rate:0.10},
+      {upto:1600000, rate:0.15},{upto:2000000, rate:0.20},{upto:2400000, rate:0.25},
+      {upto:Infinity, rate:0.30},
+    ],
+    stdDedNew: 75000, stdDedOld: 50000,
+    rebateThresholdNew: 1200000, rebateCapNew: 60000,
+    rebateThresholdOld: 500000, rebateCapOld: 12500,
+    itrDueNonAudit: '2027-08-31', itrDueAudit: '2027-10-31', belatedDeadline: '2027-12-31',
+    dueDateNote: '(Projected from the FY 2025-26 pattern — CBDT hasn\'t formally notified these yet for a return that isn\'t due until mid-2027.)',
+    basisText: 'Finance Act 2026 / Income Tax Act 2025 rates for FY 2026-27 — Budget 2026 made no change to slabs, standard deduction, rebate, surcharge or cess, so the numbers are identical to FY 2025-26. What did change: the Income Tax Act, 1961 has been replaced by the Income Tax Act, 2025 from 1 April 2026, "Tax Year" replaces "Assessment Year," and Section 87A is renumbered Section 202 (same rebate, new section number).',
+    verifiedDate: '2026-08-13', projected: true,
+  },
+};
+
+// FY 2027-28 through 2029-30: no Budget has been presented for these yet.
+// Carried forward from FY 2026-27 as a placeholder assumption, not a verified fact —
+// each one should be re-checked against the actual Union Budget once it's presented
+// (typically 1 February of the preceding calendar year).
+[2027, 2028, 2029].forEach(startYear => {
+  const fyKey = `${startYear}-${String((startYear+1)%100).padStart(2,'0')}`;
+  const base = FY_CONFIG['2026-27'];
+  FY_CONFIG[fyKey] = {
+    ...base,
+    label: `FY ${fyKey}`,
+    ayLabel: `Tax Year ${fyKey} (unconfirmed)`,
+    itrDueNonAudit: `${startYear+2}-08-31`,
+    itrDueAudit: `${startYear+2}-10-31`,
+    belatedDeadline: `${startYear+2}-12-31`,
+    dueDateNote: `(Not projected from anything official — no Union Budget has been presented for FY ${fyKey} yet. These numbers just carry forward FY 2026-27's rates as a placeholder so the calculator doesn't break; treat them as a guess, not a fact, until re-verified.)`,
+    basisText: `No Union Budget has been presented for FY ${fyKey} yet, so these are FY 2026-27's rates carried forward unchanged as a placeholder — not a verified projection. Re-check this year's actual Budget (typically presented 1 February of the preceding year) before relying on it.`,
+    verifiedDate: '2026-08-13', projected: true, unconfirmed: true,
+  };
+});
+const FY_LIST = Object.keys(FY_CONFIG);
+const INCOME_CATEGORIES = ['Sales / Service Revenue','Consulting & Professional Fees','Interest on Business Deposits','Other Business Income'];
+const EXPENSE_CATEGORIES = ['Salaries & Wages','Rent','Office & Administrative Expenses','Professional & Consultancy Fees','Travel & Conveyance','Marketing & Advertising','Depreciation','Interest on Business Loan','Vehicle Loan Interest (business use)','Repairs & Maintenance','Utilities & Communication','Bank Charges & Commission','Insurance Premium','Other Business Expense'];
+const SIMPLE_IDS = ['salary','empNps','hpRent','hpMunicipal','hpLetoutInterest','hpSelfInterest','hpEvInterest','other','stcgEq','ltcgEq','ltcgOther','s80c','s80d','nps','s80tta','s80e','s80g','s80gg','otherVIA','otherTds','tcs','selfAssess'];
+
+let currentFY = '2025-26';
+let allYearsData = {};
 let age = 'below60';
+let hpType = 'none';
 let lockedToNew = false;
 let auditType = 'business';
 let auditDigital = true;
@@ -800,10 +988,104 @@ function populateSelect(id, options){
   const el = document.getElementById(id);
   el.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
 }
-populateSelect('incMonth', MONTHS);
-populateSelect('expMonth', MONTHS);
+populateSelect('incMonth', MONTH_OPTIONS);
+populateSelect('expMonth', MONTH_OPTIONS);
 populateSelect('incCategory', INCOME_CATEGORIES);
 populateSelect('expCategory', EXPENSE_CATEGORIES);
+
+document.getElementById('fyPills').innerHTML = FY_LIST.map(fy => {
+  const cfg = FY_CONFIG[fy];
+  const flag = cfg.unconfirmed ? ' <span style="color:var(--danger);">· unconfirmed</span>' : (cfg.projected ? ' <span style="color:var(--accent);">· projected</span>' : '');
+  return `<div class="pill${fy===currentFY?' active':''}" data-fy="${fy}">${cfg.label} <span style="opacity:.6;">(${cfg.ayLabel})</span>${flag}</div>`;
+}).join('');
+document.getElementById('fyPills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  const newFy = p.dataset.fy;
+  if(newFy === currentFY) return;
+  captureCurrentYearState();
+  currentFY = newFy;
+  applyYearState(currentFY);
+  scheduleSave();
+});
+function updateFyPillsUI(){
+  document.querySelectorAll('#fyPills .pill').forEach(x=>x.classList.toggle('active', x.dataset.fy===currentFY));
+}
+function updateFooterBasis(){
+  const el = document.getElementById('footerBasisRates');
+  if(el) el.textContent = FY_CONFIG[currentFY].basisText;
+}
+
+const RULES_CHANGELOG = [
+  { date: '2026-08-13', text: 'Extended the financial year picker through FY 2029-30. FY 2027-28 to 2029-30 have no Union Budget behind them yet — they carry forward FY 2026-27\'s rates purely as a placeholder, flagged "unconfirmed" rather than "projected," and need re-verification once each year\'s actual Budget is presented.' },
+  { date: '2026-08-13', text: 'Added FY 2026-27 (Tax Year 2026-27 under the new Income Tax Act, 2025). Budget 2026 made no change to slabs, standard deduction, rebate, surcharge or cess — confirmed identical to FY 2025-26. Sec 87A is renumbered Sec 202 under the new Act, "Tax Year" replaces "Assessment Year."' },
+  { date: '2026-08-13', text: 'Corrected the FY 2025-26 non-audit ITR-3 due date to 31 August 2026 (a Finance Act 2026 change) — it was previously shown as 31 July, which is only correct for ITR-1/2.' },
+  { date: '2026-08-13', text: 'Added FY 2024-25 with its own slabs (₹7L rebate ceiling, not ₹12L) and the actual CBDT-extended due dates for that year (16 Sep / 10 Dec 2025), not the original unextended dates.' },
+  { date: '2026-08-13', text: 'Implemented surcharge marginal relief — previously the sheet applied surcharge without relief and said so; the real formula is now used.' },
+  { date: '2026-08-13', text: 'Confirmed via the Income Tax Department\'s own FAQ: self-occupied home loan interest (Sec 24b) is fully disallowed under New Regime, not just capped lower — while let-out property interest remains deductible under both regimes.' },
+];
+
+function updateRulesPanel(){
+  const cfg = FY_CONFIG[currentFY];
+  const verifiedNote = document.getElementById('rulesVerifiedNote');
+  if(cfg){
+    const verifiedStr = new Date(cfg.verifiedDate).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+    if(cfg.unconfirmed){
+      verifiedNote.innerHTML = `<span class="status-chip bad">Unconfirmed</span><div style="margin-top:8px;">No Union Budget has been presented for ${cfg.label} yet — these numbers are FY 2026-27's rates carried forward as a placeholder, checked <b>${verifiedStr}</b>, not an actual projection. Come back and ask Claude to re-verify this year once its Budget is presented (typically 1 February of the preceding year).</div>`;
+    } else if(cfg.projected){
+      verifiedNote.innerHTML = `<span class="status-chip warn">Projected</span><div style="margin-top:8px;">${cfg.label}'s rates were last checked <b>${verifiedStr}</b> and are carried forward from FY 2025-26 since Budget 2026 made no changes — but the exact filing due dates for this year haven't been officially notified yet (the return isn't due until mid-2027). Re-check nearer the time.</div>`;
+    } else {
+      verifiedNote.innerHTML = `<span class="status-chip ok">Verified</span><div style="margin-top:8px;">${cfg.label}'s rates and due dates were last checked against official sources on <b>${verifiedStr}</b>.</div>`;
+    }
+  }
+  const list = document.getElementById('rulesChangelog');
+  list.innerHTML = RULES_CHANGELOG.map(r =>
+    `<div style="padding:10px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;color:var(--muted);">
+      <span style="font-family:'IBM Plex Mono',monospace;color:var(--muted2);">${r.date}</span> — ${r.text}
+    </div>`
+  ).join('');
+}
+
+document.getElementById('refreshRulesBtn').addEventListener('click', ()=>{
+  const el = document.getElementById('refreshRulesResult');
+  el.innerHTML = `<div class="live-preview" style="border-color:#5C382F;">
+    Being straight about what this button can and can't do: a static page like this one can't safely reach out to an AI or the internet on its own — doing that here would mean exposing an API key to anyone who views the page source, which isn't something this sheet does.
+    <br><br>
+    What actually works: come back to Claude and ask it to re-verify the rates and due dates for the year you care about — that's especially worth doing right after a Union Budget (typically 1 February each year) or whenever a new Finance Act is notified. Claude can research the change, update this file, and you re-deploy it the same way you did before.
+    <br><br>
+    The "Verified" note above tells you exactly when each year was last checked, so you know how stale it might be.
+  </div>`;
+});
+
+function captureCurrentYearState(){
+  allYearsData[currentFY] = {
+    age, hpType, lockedToNew, auditType, auditDigital, adaEligible, presumptiveType,
+    incomeEntries, expenseEntries, advanceTaxEntries,
+    fields: Object.fromEntries(SIMPLE_IDS.map(id=>[id, document.getElementById(id).value]))
+  };
+}
+function applyYearState(fy){
+  const d = allYearsData[fy] || {};
+  age = d.age || 'below60';
+  hpType = d.hpType || 'none';
+  lockedToNew = !!d.lockedToNew;
+  auditType = d.auditType || 'business';
+  auditDigital = d.auditDigital !== undefined ? d.auditDigital : true;
+  adaEligible = !!d.adaEligible;
+  presumptiveType = d.presumptiveType || 'business';
+  incomeEntries = d.incomeEntries || [];
+  expenseEntries = d.expenseEntries || [];
+  advanceTaxEntries = d.advanceTaxEntries || [];
+  SIMPLE_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.value = (d.fields && d.fields[id]) || '';
+  });
+  updateFyPillsUI(); updateAgePillsUI(); updateHpPillsUI(); updateHpPreview();
+  updateLockinPillsUI(); updateAuditPillsUI(); updateAdaPillsUI(); updatePresumptiveTypePillsUI();
+  updateFooterBasis(); updateRulesPanel();
+  renderEntries(); renderAdvanceTax(); calculate();
+  renderAnalytics();
+  renderDocsList();
+}
 
 document.getElementById('agePills').addEventListener('click', e=>{
   const p = e.target.closest('.pill'); if(!p) return;
@@ -819,6 +1101,35 @@ function updateAgePillsUI(){
 function updateTtaCapLabel(){
   document.getElementById('ttaCap').textContent = age==='below60' ? 'Sec 80TTA · cap ₹10,000' : 'Sec 80TTB · cap ₹50,000';
 }
+
+document.getElementById('hpTypePills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#hpTypePills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); hpType = p.dataset.hpType;
+  updateHpPillsUI(); updateHpPreview(); calculate(); scheduleSave();
+});
+function updateHpPillsUI(){
+  document.querySelectorAll('#hpTypePills .pill').forEach(x=>x.classList.toggle('active', x.dataset.hpType===hpType));
+  document.getElementById('hpLetoutFields').style.display = hpType==='letout' ? 'block' : 'none';
+  document.getElementById('hpSelfFields').style.display = hpType==='self' ? 'block' : 'none';
+  document.getElementById('hpNoneNote').style.display = hpType==='none' ? 'block' : 'none';
+}
+function computeLetoutHp(){
+  const rent = num('hpRent');
+  const municipal = num('hpMunicipal');
+  const interest = num('hpLetoutInterest');
+  const nav = Math.max(0, rent - municipal);
+  const stdDed = Math.round(nav * 0.3);
+  const netHp = nav - stdDed - interest;
+  return { rent, municipal, nav, stdDed, interest, netHp };
+}
+function updateHpPreview(){
+  if(hpType !== 'letout') return;
+  const { nav, stdDed, interest, netHp } = computeLetoutHp();
+  document.getElementById('hpLetoutPreview').innerHTML =
+    `Net Annual Value <b>${inr(nav)}</b> · Std. deduction 30% <b>${inr(stdDed)}</b> · Interest <b>${inr(interest)}</b> → Net from house property <b>${inr(netHp)}</b>${netHp<0?' (a loss)':''}. This nets against rent under both regimes; only the loss set-off against other income is restricted differently by regime.`;
+}
+['hpRent','hpMunicipal','hpLetoutInterest'].forEach(id => document.getElementById(id).addEventListener('input', updateHpPreview));
 
 document.getElementById('lockinPills').addEventListener('click', e=>{
   const p = e.target.closest('.pill'); if(!p) return;
@@ -855,16 +1166,19 @@ function updateAuditCheck(){
   if(auditType==='business') threshold = auditDigital ? 100000000 : 10000000;
   else threshold = auditDigital ? 7500000 : 5000000;
   const el = document.getElementById('auditResult');
+  const fyCfg = FY_CONFIG[currentFY];
+  const dueAudit = new Date(fyCfg.itrDueAudit).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+  const dueNonAudit = new Date(fyCfg.itrDueNonAudit).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
   let chip, msg;
   if(gross > threshold){
     chip = '<span class="status-chip bad">Audit likely required</span>';
-    msg = `Gross receipts of ${inr(gross)} cross the ${inr(threshold)} threshold. A tax audit report (Sec 44AB) is typically required — under the Finance Act 2026 schedule for AY 2026-27, that generally means the audit report is due 30 September and the ITR itself by 31 October (vs 31 August for non-audit ITR-3/4 filers). Confirm the exact dates for this AY, they're occasionally revised.`;
+    msg = `Gross receipts of ${inr(gross)} cross the ${inr(threshold)} threshold. A tax audit report (Sec 44AB) is typically required — for ${fyCfg.label}, that generally means the ITR is due by ${dueAudit} (vs ${dueNonAudit} for non-audit ITR-3/4 filers). See the filing-deadline card below for the full picture.`;
   } else if(gross > threshold*0.85){
     chip = '<span class="status-chip warn">Getting close</span>';
-    msg = `Gross receipts of ${inr(gross)} are within 15% of the ${inr(threshold)} audit threshold — worth keeping an eye on if the year isn't over yet. Without audit, ITR-3 is due 31 August for AY 2026-27.`;
+    msg = `Gross receipts of ${inr(gross)} are within 15% of the ${inr(threshold)} audit threshold — worth keeping an eye on if the year isn't over yet. Without audit, ITR-3 for ${fyCfg.label} is due ${dueNonAudit}.`;
   } else {
     chip = '<span class="status-chip ok">No audit expected</span>';
-    msg = `Gross receipts of ${inr(gross)} are comfortably under the ${inr(threshold)} threshold for ${auditType==='business'?'business':'professional'} income${auditDigital?' with mostly digital receipts':''}. Non-audit ITR-3 is due 31 August 2026 for AY 2026-27 — a month later than ITR-1/2, under a Finance Act 2026 change.`;
+    msg = `Gross receipts of ${inr(gross)} are comfortably under the ${inr(threshold)} threshold for ${auditType==='business'?'business':'professional'} income${auditDigital?' with mostly digital receipts':''}. Non-audit ITR-3 for ${fyCfg.label} is due ${dueNonAudit}.`;
   }
   el.innerHTML = `${chip}<div style="margin-top:8px;">${msg}</div>`;
   updateAdaCheck();
@@ -882,8 +1196,9 @@ function updateFilingCheck(){
   else threshold = auditDigital ? 7500000 : 5000000;
   const auditRequired = gross > threshold;
 
-  const dueDate = new Date(auditRequired ? '2026-10-31' : '2026-08-31');
-  const belatedDeadline = new Date('2026-12-31');
+  const fyCfg = FY_CONFIG[currentFY];
+  const dueDate = new Date(auditRequired ? fyCfg.itrDueAudit : fyCfg.itrDueNonAudit);
+  const belatedDeadline = new Date(fyCfg.belatedDeadline);
   const today = new Date();
   const el = document.getElementById('filingResult');
   if(!el) return;
@@ -895,13 +1210,16 @@ function updateFilingCheck(){
     totalIncomeRef = r.totalIncome;
   }catch(e){ totalIncomeRef = 0; }
 
+  const dueDateStr = dueDate.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+  const belatedStr = belatedDeadline.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'});
+
   if(today <= dueDate){
-    el.innerHTML = `<span class="status-chip ok">On time</span><div style="margin-top:8px;">Your due date is <b>${dueDate.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</b>${auditRequired ? ' (audit case)' : ' (non-audit ITR-3)'} — you're filing ahead of it as of today.</div>`;
+    el.innerHTML = `<span class="status-chip ok">On time</span><div style="margin-top:8px;">Your ${fyCfg.label} due date is <b>${dueDateStr}</b>${auditRequired ? ' (audit case)' : ' (non-audit ITR-3)'} ${fyCfg.dueDateNote} — you're filing ahead of it as of today.</div>`;
   } else if(today <= belatedDeadline){
     const fee = totalIncomeRef > 500000 ? 5000 : 1000;
-    el.innerHTML = `<span class="status-chip warn">Belated return</span><div style="margin-top:8px;">Your original due date of <b>${dueDate.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</b> has passed. You can still file a belated return under Sec 139(4) up to 31 December 2026, but a late fee under <b>Sec 234F of ${inr(fee)}</b> applies (₹1,000 if total income ≤₹5L, else ₹5,000). If any tax is still outstanding, <b>Sec 234A interest</b> (1% per month from the due date) may also apply on top of the 234B/234C figures shown further down — this tool doesn't add that separately. A belated filing also means you <b>can't carry forward business losses</b> to future years.</div>`;
+    el.innerHTML = `<span class="status-chip warn">Belated return</span><div style="margin-top:8px;">The ${fyCfg.label} due date of <b>${dueDateStr}</b> has passed. You can still file a belated return under Sec 139(4) up to <b>${belatedStr}</b>, but a late fee under <b>Sec 234F of ${inr(fee)}</b> applies (₹1,000 if total income ≤₹5L, else ₹5,000). If any tax is still outstanding, <b>Sec 234A interest</b> (1% per month from the due date) may also apply on top of the 234B/234C figures shown further down — this tool doesn't add that separately. A belated filing also means you <b>can't carry forward business losses</b> to future years.</div>`;
   } else {
-    el.innerHTML = `<span class="status-chip bad">Past belated deadline</span><div style="margin-top:8px;">Even the belated return window (31 December 2026) has passed. An updated return under Sec 139(8A) may still be possible within 48 months of the assessment year end, with additional tax — talk to your CA about this specifically, it's not something to work out from a planning sheet.</div>`;
+    el.innerHTML = `<span class="status-chip bad">Past belated deadline</span><div style="margin-top:8px;">Even the belated return window (${belatedStr}) for ${fyCfg.label} has passed. An updated return under Sec 139(8A) may still be possible within 48 months of the assessment year end, with additional tax — talk to your CA about this specifically, it's not something to work out from a planning sheet.</div>`;
   }
 }
 
@@ -1000,6 +1318,81 @@ document.getElementById('tdsFileInput').addEventListener('change', (e)=>{
   reader.readAsArrayBuffer(file);
 });
 
+const DOCS_BUCKET = 'itr3-documents';
+
+document.getElementById('docUploadBtn').addEventListener('click', ()=>{
+  if(!currentUserId){ alert('Sign in first — documents are stored against your account.'); return; }
+  document.getElementById('docFileInput').click();
+});
+document.getElementById('docFileInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file || !currentUserId || !sb) return;
+  document.getElementById('docFileName').textContent = 'Uploading ' + file.name + '…';
+  const path = `${currentUserId}/${currentFY}/${Date.now()}_${file.name}`;
+  try{
+    const { error } = await sb.storage.from(DOCS_BUCKET).upload(path, file);
+    if(error) throw error;
+    document.getElementById('docFileName').textContent = '';
+    await renderDocsList();
+  }catch(err){
+    console.error('Document upload failed:', err);
+    document.getElementById('docFileName').textContent = '';
+    if(String(err.message||'').toLowerCase().includes('bucket not found')){
+      document.getElementById('docsSetupNote').style.display = 'block';
+    } else {
+      alert('Upload failed: ' + (err.message || 'unknown error'));
+    }
+  }
+  document.getElementById('docFileInput').value = '';
+});
+
+async function renderDocsList(){
+  const wrap = document.getElementById('docsListWrap');
+  if(!currentUserId || !sb){
+    wrap.innerHTML = '<div class="empty-state">Sign in to store and see documents for this year.</div>';
+    return;
+  }
+  try{
+    const prefix = `${currentUserId}/${currentFY}`;
+    const { data: files, error } = await sb.storage.from(DOCS_BUCKET).list(prefix, { sortBy: { column: 'created_at', order: 'desc' } });
+    if(error) throw error;
+    document.getElementById('docsSetupNote').style.display = 'none';
+    if(!files || files.length === 0){
+      wrap.innerHTML = `<div class="empty-state">No documents uploaded yet for ${FY_CONFIG[currentFY] ? FY_CONFIG[currentFY].label : currentFY}.</div>`;
+      return;
+    }
+    const rowsHtml = await Promise.all(files.map(async f => {
+      const fullPath = `${prefix}/${f.name}`;
+      const { data: signed } = await sb.storage.from(DOCS_BUCKET).createSignedUrl(fullPath, 3600);
+      const displayName = f.name.replace(/^\d+_/, '');
+      const url = signed ? signed.signedUrl : '#';
+      return `<tr>
+        <td>${displayName}</td>
+        <td class="amt-cell"><a href="${url}" target="_blank" style="color:var(--accent);">Open</a></td>
+        <td><button class="del-btn" data-path="${fullPath}" title="Delete">✕</button></td>
+      </tr>`;
+    }));
+    wrap.innerHTML = `
+      <table class="entries-table">
+        <thead><tr><th>File</th><th></th><th></th></tr></thead>
+        <tbody>${rowsHtml.join('')}</tbody>
+      </table>`;
+    wrap.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', async ()=>{
+      if(!confirm('Delete this document?')) return;
+      await sb.storage.from(DOCS_BUCKET).remove([btn.dataset.path]);
+      renderDocsList();
+    }));
+  }catch(err){
+    console.error('Listing documents failed:', err);
+    if(String(err.message||'').toLowerCase().includes('bucket not found')){
+      document.getElementById('docsSetupNote').style.display = 'block';
+      wrap.innerHTML = '';
+    } else {
+      wrap.innerHTML = '<div class="empty-state">Couldn\'t load documents right now.</div>';
+    }
+  }
+}
+
 function findCol(row, keywords){
   const keys = Object.keys(row);
   for(const kw of keywords){
@@ -1068,6 +1461,15 @@ document.getElementById('cgToggle').addEventListener('click', ()=>{
   const el = document.getElementById('cgFields');
   const open = el.classList.toggle('open');
   document.getElementById('cgToggle').textContent = open ? '− Hide capital gains' : '+ Add capital gains';
+});
+
+document.getElementById('compare').addEventListener('click', e=>{
+  const btn = e.target.closest('.ledger-toggle'); if(!btn) return;
+  const target = document.getElementById(btn.dataset.target);
+  if(!target) return;
+  const isHidden = target.style.display === 'none';
+  target.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? 'Hide full breakdown ▴' : 'Show full breakdown ▾';
 });
 
 document.getElementById('showIncomeForm').addEventListener('click', ()=>{
@@ -1169,12 +1571,13 @@ document.getElementById('advSubmit').addEventListener('click', ()=>{
 });
 
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
-  if(!confirm('Clear everything you\'ve entered on this sheet? This cannot be undone.')) return;
+  if(!confirm(`Clear everything you've entered for ${FY_CONFIG[currentFY].label}? Other years are not affected. This cannot be undone.`)) return;
   incomeEntries = []; expenseEntries = []; advanceTaxEntries = [];
-  age = 'below60'; lockedToNew = false; auditType = 'business'; auditDigital = true; adaEligible = false; presumptiveType = 'business';
+  age = 'below60'; hpType = 'none'; lockedToNew = false; auditType = 'business'; auditDigital = true; adaEligible = false; presumptiveType = 'business';
   SIMPLE_IDS.forEach(id => document.getElementById(id).value = '');
-  updateAgePillsUI(); updateLockinPillsUI(); updateAuditPillsUI(); updateAdaPillsUI(); updatePresumptiveTypePillsUI();
-  renderEntries(); renderAdvanceTax(); calculate();
+  delete allYearsData[currentFY];
+  updateAgePillsUI(); updateHpPillsUI(); updateHpPreview(); updateLockinPillsUI(); updateAuditPillsUI(); updateAdaPillsUI(); updatePresumptiveTypePillsUI();
+  renderEntries(); renderAdvanceTax(); calculate(); renderAnalytics();
   if(currentUserId){ await saveState(); setSaveStatus('saved','Cleared'); }
 });
 
@@ -1198,6 +1601,10 @@ function enterGuestMode(){
   document.getElementById('guestChip').style.display = 'inline-flex';
   document.getElementById('profileChip').style.display = 'none';
   setSaveStatus('','Not saved in guest mode');
+  allYearsData = {};
+  currentFY = '2025-26';
+  updateFyPillsUI();
+  updateFooterBasis(); updateRulesPanel();
   updateAgePillsUI();
   updateLockinPillsUI();
   updateAuditPillsUI();
@@ -1205,6 +1612,8 @@ function enterGuestMode(){
   renderEntries();
   renderAdvanceTax();
   calculate();
+  renderAnalytics();
+  renderDocsList();
 }
 
 document.getElementById('authToggleBtn').addEventListener('click', ()=>{
@@ -1259,6 +1668,7 @@ async function onSignedIn(session){
   document.getElementById('profileChip').style.display = 'inline-flex';
   document.getElementById('profileLabel').textContent = currentUserEmail;
   await loadProfileData();
+  renderDocsList();
 }
 
 SIMPLE_IDS.forEach(id => document.getElementById(id).addEventListener('input', ()=>{ calculate(); scheduleSave(); }));
@@ -1279,7 +1689,7 @@ function renderEntries(){
   const all = [
     ...incomeEntries.map(e=>({...e, type:'income'})),
     ...expenseEntries.map(e=>({...e, type:'expense'}))
-  ].sort((a,b)=> MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month));
+  ].sort((a,b)=> monthSortIndex(a.month) - monthSortIndex(b.month));
 
   const wrap = document.getElementById('entriesTableWrap');
   if(all.length===0){
@@ -1311,12 +1721,13 @@ function renderEntries(){
   }
 
   const grid = document.getElementById('monthGrid');
-  grid.innerHTML = MONTHS.map(m => {
+  grid.innerHTML = MONTH_OPTIONS.map(m => {
     const inc = incomeEntries.filter(e=>e.month===m).reduce((s,e)=>s+e.amount,0);
     const exp = expenseEntries.filter(e=>e.month===m).reduce((s,e)=>s+e.amount,0);
     const net = inc - exp;
     const cls = net>0 ? 'pos' : (net<0 ? 'neg' : 'zero');
-    return `<div class="month-cell"><div class="m">${m}</div><div class="v ${cls}">${inr(net)}</div></div>`;
+    const label = m==='Full Year' ? 'Yr' : m;
+    return `<div class="month-cell${m==='Full Year' ? ' month-cell-year' : ''}"><div class="m">${label}</div><div class="v ${cls}">${inr(net)}</div></div>`;
   }).join('');
 }
 
@@ -1388,17 +1799,6 @@ function slabTax(income, slabs){
   return tax;
 }
 
-const NEW_SLABS = [
-  {upto:400000, rate:0},{upto:800000, rate:0.05},{upto:1200000, rate:0.10},
-  {upto:1600000, rate:0.15},{upto:2000000, rate:0.20},{upto:2400000, rate:0.25},
-  {upto:Infinity, rate:0.30},
-];
-const OLD_SLABS = {
-  below60: [{upto:250000,rate:0},{upto:500000,rate:0.05},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
-  senior:  [{upto:300000,rate:0},{upto:500000,rate:0.05},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
-  supersenior: [{upto:500000,rate:0},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
-};
-
 function getSurcharge(totalIncome, tax, isNew, slabIncome, specialTax, slabs){
   let rate = 0, threshold = 0;
   if(totalIncome > 50000000){ rate = isNew ? 0.25 : 0.37; threshold = 50000000; }
@@ -1424,16 +1824,26 @@ function getSurcharge(totalIncome, tax, isNew, slabIncome, specialTax, slabs){
 
 function computeRegime(isNew, businessIncome){
   const salary = num('salary');
-  const hpRaw = num('hp');
   const other = num('other');
   const stcgEq = num('stcgEq');
   const ltcgEq = num('ltcgEq');
   const ltcgOther = num('ltcgOther');
 
-  const stdDed = salary > 0 ? (isNew ? 75000 : 50000) : 0;
+  const fyCfg = FY_CONFIG[currentFY];
+  const stdDed = salary > 0 ? (isNew ? fyCfg.stdDedNew : fyCfg.stdDedOld) : 0;
   const empNpsCap = salary * 0.14;
   const empNps = Math.min(num('empNps'), empNpsCap > 0 ? empNpsCap : 0);
   const salaryTaxable = Math.max(salary - stdDed - empNps, 0);
+
+  // House property — self-occupied interest is old-regime-only (capped 2L);
+  // let-out interest/30% deduction nets against rent under BOTH regimes,
+  // only the resulting loss set-off is restricted differently by regime.
+  let hpRaw = 0;
+  if(hpType === 'letout'){
+    hpRaw = computeLetoutHp().netHp;
+  } else if(hpType === 'self' && !isNew){
+    hpRaw = -Math.min(num('hpSelfInterest'), 200000);
+  }
   const hp = isNew ? Math.max(hpRaw, 0) : Math.max(hpRaw, -200000);
 
   let viaTotal = 0;
@@ -1441,14 +1851,14 @@ function computeRegime(isNew, businessIncome){
     const s80c = Math.min(num('s80c'), 150000);
     const s80d = num('s80d');
     const nps = Math.min(num('nps'), 50000);
-    const homeint = Math.min(num('homeint'), 200000);
+    const evInterest = hpType==='self' ? Math.min(num('hpEvInterest'), 150000) : 0;
     const ttaCap = age==='below60' ? 10000 : 50000;
     const s80tta = Math.min(num('s80tta'), ttaCap);
     const s80e = num('s80e');
     const s80g = num('s80g');
     const s80gg = Math.min(num('s80gg'), 60000);
     const otherVIA = num('otherVIA');
-    viaTotal = s80c + s80d + nps + homeint + s80tta + s80e + s80g + s80gg + otherVIA;
+    viaTotal = s80c + s80d + nps + evInterest + s80tta + s80e + s80g + s80gg + otherVIA;
   }
 
   let slabIncome = businessIncome + salaryTaxable + hp + other - viaTotal;
@@ -1459,11 +1869,11 @@ function computeRegime(isNew, businessIncome){
   const specialIncomeGross = stcgEq + ltcgEq + ltcgOther;
   const totalIncome = slabIncome + specialIncomeGross;
 
-  const slabs = isNew ? NEW_SLABS : OLD_SLABS[age];
+  const slabs = isNew ? fyCfg.newSlabs : OLD_SLABS[age];
   const taxOnSlab = slabTax(slabIncome, slabs);
 
-  const rebateThreshold = isNew ? 1200000 : 500000;
-  const rebateCap = isNew ? 60000 : 12500;
+  const rebateThreshold = isNew ? fyCfg.rebateThresholdNew : fyCfg.rebateThresholdOld;
+  const rebateCap = isNew ? fyCfg.rebateCapNew : fyCfg.rebateCapOld;
   let rebate = 0;
   if(totalIncome <= rebateThreshold) rebate = Math.min(taxOnSlab, rebateCap);
 
@@ -1484,16 +1894,21 @@ function ledgerRow(lbl, val, opts={}){
   return `<div class="${cls}"><span class="lbl">${lbl}</span><span class="dots"></span><span class="val">${inr(val)}</span></div>`;
 }
 
-const ADVANCE_DUE_DATES = [
-  {label:'Q1 · 15 Jun 2025', date:'2025-06-15', pct:0.15, months:3},
-  {label:'Q2 · 15 Sep 2025', date:'2025-09-15', pct:0.45, months:3},
-  {label:'Q3 · 15 Dec 2025', date:'2025-12-15', pct:0.75, months:3},
-  {label:'Q4 · 15 Mar 2026', date:'2026-03-15', pct:1.00, months:1},
-];
+function fyStartYear(){ return parseInt(currentFY.split('-')[0], 10); } // e.g. 2024 for '2024-25'
 
-const PRESUMPTIVE_DUE_DATES = [
-  {label:'Full amount · 15 Mar 2026', date:'2026-03-15', pct:1.00, months:1},
-];
+function advanceDueDates(){
+  const y = fyStartYear();
+  return [
+    {label:`Q1 · 15 Jun ${y}`, date:`${y}-06-15`, pct:0.15, months:3},
+    {label:`Q2 · 15 Sep ${y}`, date:`${y}-09-15`, pct:0.45, months:3},
+    {label:`Q3 · 15 Dec ${y}`, date:`${y}-12-15`, pct:0.75, months:3},
+    {label:`Q4 · 15 Mar ${y+1}`, date:`${y+1}-03-15`, pct:1.00, months:1},
+  ];
+}
+function presumptiveDueDates(){
+  const y = fyStartYear();
+  return [{label:`Full amount · 15 Mar ${y+1}`, date:`${y+1}-03-15`, pct:1.00, months:1}];
+}
 
 function computeInterest(totalTax, method){
   const tdsFromIncome = incomeEntries.reduce((s,e)=>s+(e.tds||0),0);
@@ -1501,7 +1916,7 @@ function computeInterest(totalTax, method){
   const tcs = num('tcs');
   const selfAssess = num('selfAssess');
   const isPresumptive = method==='44AD' || method==='44ADA';
-  const dueDates = isPresumptive ? PRESUMPTIVE_DUE_DATES : ADVANCE_DUE_DATES;
+  const dueDates = isPresumptive ? presumptiveDueDates() : advanceDueDates();
 
   const rows = dueDates.map(d => {
     const advTillThen = advanceTaxEntries.filter(a=>a.date && a.date<=d.date).reduce((s,a)=>s+a.amount,0);
@@ -1513,13 +1928,14 @@ function computeInterest(totalTax, method){
   });
   const interest234C = rows.reduce((s,r)=>s+r.interest,0);
 
-  const yearEnd = '2026-03-31';
+  const y = fyStartYear();
+  const yearEnd = `${y+1}-03-31`;
   const advByYearEnd = advanceTaxEntries.filter(a=>a.date && a.date<=yearEnd).reduce((s,a)=>s+a.amount,0);
   const paidByYearEnd = tdsFromIncome + otherTds + tcs + advByYearEnd;
   let interest234B = 0;
   if(paidByYearEnd < totalTax*0.90){
     const outstanding = Math.max(0, totalTax - paidByYearEnd - selfAssess);
-    const start = new Date('2026-04-01');
+    const start = new Date(`${y+1}-04-01`);
     const now = new Date();
     let months = 0;
     if(now >= start){
@@ -1565,6 +1981,7 @@ function computeRegimeSmart(isNew, regularIncome, presumptiveIncome, eligible, s
 function renderCard(r, isNew, isWinner, taxesPaid, interest){
   const cls = isNew ? 'new' : 'old';
   const name = isNew ? 'New Regime' : 'Old Regime';
+  const cardId = isNew ? 'cardNew' : 'cardOld';
   const sub = isNew ? 'Sec 115BAC · default regime' : 'With Chapter VI-A deductions';
   const extraCharges = interest.interest234B + interest.interest234C;
   const balance = r.totalTax - taxesPaid + extraCharges;
@@ -1587,7 +2004,8 @@ function renderCard(r, isNew, isWinner, taxesPaid, interest){
         <div class="lbl">${balanceLbl}${balance<0?' to you':''}</div>
       </div>
     </div>
-    <div class="ledger">
+    <button class="ledger-toggle" data-target="${cardId}" type="button">Show full breakdown ▾</button>
+    <div class="ledger" id="${cardId}" style="display:none;">
       ${ledgerRow(businessLbl, r.business)}
       ${r.salary>0 ? ledgerRow('Salary, after std. deduction & 80CCD(2)', r.salaryTaxable) : ''}
       ${ledgerRow('House property', r.hp)}
@@ -1634,7 +2052,7 @@ function calculate(){
   const newWins = rNew.totalTax < rOld.totalTax;
 
   document.getElementById('compare').innerHTML =
-    renderCard(rOld, false, oldWins, taxesPaid, interestOld) + renderCard(rNew, true, newWins, taxesPaid, interestNew);
+    renderCard(rNew, true, newWins, taxesPaid, interestNew) + renderCard(rOld, false, oldWins, taxesPaid, interestOld);
 
   const diff = Math.abs(rOld.totalTax - rNew.totalTax);
   let strip = '';
@@ -1654,6 +2072,121 @@ function calculate(){
 
   const refRegime = oldWins ? {tax:rOld.totalTax, label:'Old Regime (lower)', method:rOld.method} : {tax:rNew.totalTax, label:'New Regime (lower)', method:rNew.method};
   renderAdvanceProgress(refRegime.tax, refRegime.label, refRegime.method);
+  renderAnalytics();
+}
+
+/* ---------- analytics ---------- */
+let chartMonthlyInstance = null, chartYearlyInstance = null;
+
+function fyKeyOffset(fy, offset){
+  const y = parseInt(fy.split('-')[0],10) + offset;
+  return `${y}-${String((y+1)%100).padStart(2,'0')}`;
+}
+function yearDataFor(fy){
+  return fy === currentFY ? {incomeEntries, expenseEntries} : (allYearsData[fy] || {incomeEntries:[], expenseEntries:[]});
+}
+function getYearMonthlyNet(fy){
+  const d = yearDataFor(fy);
+  return MONTHS.map(m => {
+    const inc = (d.incomeEntries||[]).filter(e=>e.month===m).reduce((s,e)=>s+e.amount,0);
+    const exp = (d.expenseEntries||[]).filter(e=>e.month===m).reduce((s,e)=>s+e.amount,0);
+    return inc - exp;
+  });
+}
+function getYearTotals(fy){
+  const d = yearDataFor(fy);
+  const inc = (d.incomeEntries||[]).reduce((s,e)=>s+e.amount,0);
+  const exp = (d.expenseEntries||[]).reduce((s,e)=>s+e.amount,0);
+  return { inc, exp, net: inc-exp };
+}
+
+function renderAnalytics(){
+  const emptyEl = document.getElementById('analyticsEmptyState');
+  const chartsEl = document.getElementById('analyticsCharts');
+  if(!emptyEl || !chartsEl) return;
+
+  if(typeof Chart === 'undefined'){
+    emptyEl.style.display = 'block';
+    emptyEl.textContent = 'Charts library failed to load — check your connection and reload.';
+    chartsEl.style.display = 'none';
+    return;
+  }
+
+  const otherYearsHaveData = Object.entries(allYearsData).some(([fy, d]) =>
+    fy !== currentFY && ((d.incomeEntries||[]).length || (d.expenseEntries||[]).length));
+  const anyData = incomeEntries.length || expenseEntries.length || otherYearsHaveData;
+
+  emptyEl.style.display = anyData ? 'none' : 'block';
+  chartsEl.style.display = anyData ? 'block' : 'none';
+  if(!anyData) return;
+
+  const prevFy = fyKeyOffset(currentFY, -1);
+  const prevHasData = (allYearsData[prevFy] && ((allYearsData[prevFy].incomeEntries||[]).length || (allYearsData[prevFy].expenseEntries||[]).length));
+
+  const currentNet = getYearMonthlyNet(currentFY);
+  const currentLabel = FY_CONFIG[currentFY] ? FY_CONFIG[currentFY].label : currentFY;
+  const prevLabel = FY_CONFIG[prevFy] ? FY_CONFIG[prevFy].label : prevFy;
+
+  const gridColor = '#212B4A', tickColor = '#8A94B3';
+  const monthlyDatasets = [{ label: currentLabel, data: currentNet, backgroundColor: '#D4A24C', borderRadius: 4 }];
+  if(prevHasData){
+    monthlyDatasets.push({ label: prevLabel, data: getYearMonthlyNet(prevFy), backgroundColor: '#6FA8DC', borderRadius: 4 });
+  }
+
+  try{
+    const ctx1 = document.getElementById('chartMonthly').getContext('2d');
+    if(chartMonthlyInstance) chartMonthlyInstance.destroy();
+    chartMonthlyInstance = new Chart(ctx1, {
+      type: 'bar',
+      data: { labels: MONTHS, datasets: monthlyDatasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: tickColor } },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${inr(c.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { color: tickColor }, grid: { color: gridColor } },
+          y: { ticks: { color: tickColor, callback: v => inr(v) }, grid: { color: gridColor } }
+        }
+      }
+    });
+
+    const yearsWithData = Object.keys(allYearsData).length
+      ? Array.from(new Set([...Object.keys(allYearsData), currentFY])).sort()
+      : [currentFY];
+    const filteredYears = yearsWithData.filter(fy => { const t = getYearTotals(fy); return t.inc>0 || t.exp>0; });
+    const totals = filteredYears.map(fy => getYearTotals(fy));
+
+    const ctx2 = document.getElementById('chartYearly').getContext('2d');
+    if(chartYearlyInstance) chartYearlyInstance.destroy();
+    chartYearlyInstance = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: filteredYears.map(fy => FY_CONFIG[fy] ? FY_CONFIG[fy].label : fy),
+        datasets: [
+          { label: 'Income', data: totals.map(t=>t.inc), backgroundColor: '#4FBF8F', borderRadius: 4 },
+          { label: 'Expenses', data: totals.map(t=>t.exp), backgroundColor: '#E2725B', borderRadius: 4 },
+          { label: 'Net profit', data: totals.map(t=>t.net), backgroundColor: '#D4A24C', borderRadius: 4 },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: tickColor } },
+          tooltip: { callbacks: { label: c => `${c.dataset.label}: ${inr(c.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { color: tickColor }, grid: { color: gridColor } },
+          y: { ticks: { color: tickColor, callback: v => inr(v) }, grid: { color: gridColor } }
+        }
+      }
+    });
+  }catch(e){
+    console.error('Chart render failed:', e);
+  }
 }
 
 /* ---------- exports ---------- */
@@ -1724,7 +2257,7 @@ function generatePDF(){
     heading('Income & Expense Entries', 11);
     tableHead(['Month','Type','Category','Gross','TDS','Net'], [16,18,58,32,32,20]);
     const all = [...incomeEntries.map(e=>({...e,type:'Income'})), ...expenseEntries.map(e=>({...e,type:'Expense'}))]
-      .sort((a,b)=> MONTHS.indexOf(a.month)-MONTHS.indexOf(b.month));
+      .sort((a,b)=> monthSortIndex(a.month)-monthSortIndex(b.month));
     all.forEach(e => {
       tableRow([e.month, e.type, e.category.slice(0,32), inr(e.amount), e.type==='Income'&&e.tds?inr(e.tds):'—', e.type==='Income'?inr(e.amount-(e.tds||0)):'—'],
         [16,18,58,32,32,20], ['left','left','left','right','right','right']);
@@ -1844,10 +2377,8 @@ function scheduleSave(){
 }
 async function saveState(){
   if(!currentUserId || !sb) return;
-  const data = {
-    age, lockedToNew, auditType, auditDigital, adaEligible, presumptiveType, incomeEntries, expenseEntries, advanceTaxEntries,
-    fields: Object.fromEntries(SIMPLE_IDS.map(id=>[id, document.getElementById(id).value]))
-  };
+  captureCurrentYearState();
+  const data = { __multiYear: true, years: allYearsData };
   try{
     const { error } = await sb.from('itr3_profiles').upsert({
       user_id: currentUserId, data, updated_at: new Date().toISOString()
@@ -1861,7 +2392,9 @@ async function saveState(){
 }
 
 async function loadProfileData(){
-  age = 'below60'; lockedToNew = false; auditType = 'business'; auditDigital = true; adaEligible = false; presumptiveType = 'business';
+  allYearsData = {};
+  currentFY = '2025-26';
+  age = 'below60'; hpType = 'none'; lockedToNew = false; auditType = 'business'; auditDigital = true; adaEligible = false; presumptiveType = 'business';
   incomeEntries = []; expenseEntries = []; advanceTaxEntries = [];
   SIMPLE_IDS.forEach(id => document.getElementById(id).value = '');
   try{
@@ -1869,16 +2402,24 @@ async function loadProfileData(){
     if(error) throw error;
     if(rows && rows.data){
       const data = rows.data;
-      age = data.age || 'below60';
-      lockedToNew = !!data.lockedToNew;
-      auditType = data.auditType || 'business';
-      auditDigital = data.auditDigital !== undefined ? data.auditDigital : true;
-      adaEligible = !!data.adaEligible;
-      presumptiveType = data.presumptiveType || 'business';
-      incomeEntries = data.incomeEntries || [];
-      expenseEntries = data.expenseEntries || [];
-      advanceTaxEntries = data.advanceTaxEntries || [];
-      Object.entries(data.fields||{}).forEach(([id,val])=>{
+      if(data.__multiYear && data.years){
+        allYearsData = data.years;
+      } else if(data.incomeEntries !== undefined || data.fields !== undefined){
+        // Migrate old single-year (pre multi-year) blob into FY 2025-26
+        allYearsData = { '2025-26': data };
+      }
+      const d = allYearsData[currentFY] || {};
+      age = d.age || 'below60';
+      lockedToNew = !!d.lockedToNew;
+      auditType = d.auditType || 'business';
+      auditDigital = d.auditDigital !== undefined ? d.auditDigital : true;
+      adaEligible = !!d.adaEligible;
+      hpType = d.hpType || 'none';
+      presumptiveType = d.presumptiveType || 'business';
+      incomeEntries = d.incomeEntries || [];
+      expenseEntries = d.expenseEntries || [];
+      advanceTaxEntries = d.advanceTaxEntries || [];
+      Object.entries(d.fields||{}).forEach(([id,val])=>{
         const el = document.getElementById(id);
         if(el && val) el.value = val;
       });
@@ -1888,13 +2429,17 @@ async function loadProfileData(){
     console.log('No saved data yet for this account:', e);
     setSaveStatus('saved','Ready');
   }
+  updateFyPillsUI();
+  updateFooterBasis(); updateRulesPanel();
   updateAgePillsUI();
+  updateHpPillsUI(); updateHpPreview();
   updateLockinPillsUI();
   updateAuditPillsUI();
   updateAdaPillsUI(); updatePresumptiveTypePillsUI();
   renderEntries();
   renderAdvanceTax();
   calculate();
+  renderAnalytics();
 }
 
 async function bootstrap(){
