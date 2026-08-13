@@ -7,7 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.38.0/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --bg:#0B1220;
@@ -205,6 +207,8 @@
   .bp-summary .item.income .amt{color:var(--new);}
   .bp-summary .item.expense .amt{color:var(--danger);}
   .bp-summary .item.net .amt{color:var(--accent);font-size:24px;}
+  .bp-summary .item.tds .amt{color:var(--danger);}
+  .bp-summary .item.received .amt{color:var(--old);}
 
   /* toolbar */
   .ledger-toolbar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
@@ -223,8 +227,57 @@
     padding:18px;margin-bottom:16px;
   }
   .entry-form.open{display:block;}
-  .entry-form .row{display:grid;grid-template-columns:100px 1fr 1fr 140px auto;gap:10px;align-items:end;}
+  .entry-form .row{display:grid;grid-template-columns:90px 1fr 1fr 120px 120px auto;gap:10px;align-items:end;}
   @media(max-width:760px){.entry-form .row{grid-template-columns:1fr 1fr;}}
+  .tds-quickfill{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted2);
+    background:none;border:1px dashed var(--border);border-radius:5px;padding:2px 6px;
+    cursor:pointer;margin-left:6px;
+  }
+  .tds-quickfill:hover{color:var(--accent);border-color:var(--accent);}
+
+  .mode-toggle{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .mode-toggle-lbl{font-size:11.5px;color:var(--muted2);font-family:'IBM Plex Mono',monospace;}
+  .mode-pill{
+    font-family:'Inter',sans-serif;font-size:12px;padding:7px 12px;border-radius:16px;
+    border:1px solid var(--border);background:var(--surface2);color:var(--muted);cursor:pointer;
+  }
+  .mode-pill.active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);}
+  .live-preview{
+    font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--muted);
+    background:var(--surface2);border:1px solid var(--border-soft);border-radius:8px;
+    padding:10px 14px;margin-top:14px;
+  }
+  .live-preview b{color:var(--text);}
+
+  .status-chip{
+    display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:11px;
+    padding:3px 9px;border-radius:6px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;
+  }
+  .status-chip.ok{background:var(--new-soft);color:var(--new);}
+  .status-chip.warn{background:var(--accent-soft);color:var(--accent);}
+  .status-chip.bad{background:var(--danger-soft);color:var(--danger);}
+
+  .progress-table{width:100%;border-collapse:collapse;margin-top:10px;}
+  .progress-table th{
+    text-align:left;font-size:10.5px;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;
+    padding:8px 10px;border-bottom:1px solid var(--border-soft);font-weight:600;
+  }
+  .progress-table td{padding:9px 10px;font-size:12.5px;border-bottom:1px solid var(--border-soft);}
+  .progress-table tr:last-child td{border-bottom:none;}
+  .progress-table .amt-cell{font-family:'IBM Plex Mono',monospace;text-align:right;white-space:nowrap;}
+
+  @media print{
+    body{background:#fff !important;color:#111 !important;padding:0;}
+    .overlay, .ledger-toolbar, .entry-form, .advanced-toggle, .reset-link, .switch-link,
+    .mode-toggle, #agePills, #lockinPills, #auditTypePills, #auditDigitalPills,
+    .save-status, .profile-chip, .guest-chip, footer .overlay { display:none !important; }
+    .card{border:1px solid #ccc !important;background:#fff !important;break-inside:avoid;}
+    .regime-card{border:1px solid #ccc !important;background:#fff !important;break-inside:avoid;}
+    h1, h2, .regime-name, .schedule-title, .ledger-row .lbl, .ledger-row .val, .amt, .payable .lbl{color:#111 !important;}
+    .subtitle, .schedule-note, footer{color:#555 !important;}
+    a, .switch-link{color:#111 !important;}
+  }
   .entry-form label{display:block;font-size:10.5px;color:var(--muted2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;}
   .entry-form input, .entry-form select{
     width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);
@@ -304,9 +357,12 @@
     padding:4px 9px;border-radius:6px;font-weight:600;
   }
 
-  .payable{padding:0 26px 20px;}
-  .payable .amt{font-family:'IBM Plex Mono',monospace;font-size:34px;font-weight:600;letter-spacing:-.01em;}
-  .payable .lbl{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .payable{padding:0 26px 20px;display:flex;gap:28px;flex-wrap:wrap;}
+  .payable .stat .amt{font-family:'IBM Plex Mono',monospace;font-size:28px;font-weight:600;letter-spacing:-.01em;}
+  .payable .stat .lbl{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .payable .stat.liability .amt{color:var(--text);}
+  .payable .stat.balance .amt.owe{color:var(--danger);}
+  .payable .stat.balance .amt.refund{color:var(--new);}
 
   .ledger{padding:18px 26px 24px;border-top:1px solid var(--border-soft);}
   .ledger-row{display:flex;align-items:baseline;gap:8px;padding:5px 0;font-size:13px;}
@@ -317,6 +373,10 @@
   .ledger-row.total .lbl{color:var(--text);font-weight:600;}
   .ledger-row.total .val{font-weight:600;font-size:15px;}
   .ledger-row.neg .val{color:var(--danger);}
+  .ledger-row.pos .val{color:var(--new);}
+  .ledger-row.balance{border-top:1px dashed var(--border-soft);margin-top:6px;padding-top:12px;font-size:14.5px;}
+  .ledger-row.balance .lbl{color:var(--text);font-weight:600;}
+  .ledger-row.balance .val{font-weight:700;font-size:16px;}
 
   .savings-strip{
     max-width:1080px;margin:20px auto 0;text-align:center;
@@ -349,6 +409,9 @@
       <span id="authToggleText">Don't have an account?</span>
       <button class="switch-link" id="authToggleBtn" type="button">Create one</button>
     </p>
+    <p class="overlay-toggle" style="margin-top:4px;">
+      <button class="switch-link" id="guestModeBtn" type="button">Just want to look around? Try it without signing in →</button>
+    </p>
   </div>
 </div>
 
@@ -366,8 +429,18 @@
         <span id="profileLabel"></span>
         <button class="switch-link" id="signOutBtn" type="button">Sign out</button>
       </div>
+      <div class="profile-chip" id="guestChip" style="display:none;background:var(--danger-soft);border-color:#5C382F;">
+        <span class="profile-dot" style="background:var(--danger);"></span>
+        <span>Guest mode — nothing is saved</span>
+        <button class="switch-link" id="guestSignInBtn" type="button">Sign in</button>
+      </div>
       <div class="save-status" id="saveStatus"><span class="save-dot"></span><span id="saveStatusText">Loading…</span></div>
-      <button class="reset-link" id="resetBtn" type="button">Clear my data</button>
+      <div style="display:flex;gap:14px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="reset-link" id="downloadPdfBtn" type="button" style="color:var(--accent);">Download PDF</button>
+        <button class="reset-link" id="downloadExcelBtn" type="button" style="color:var(--new);">Download Excel</button>
+        <button class="reset-link" id="printBtn" type="button">Print</button>
+        <button class="reset-link" id="resetBtn" type="button">Clear my data</button>
+      </div>
     </div>
   </div>
 
@@ -382,6 +455,15 @@
       <div class="pill" data-age="senior">Senior citizen (60–79)</div>
       <div class="pill" data-age="supersenior">Super senior (80+)</div>
     </div>
+
+    <div class="schedule-note" style="margin:22px 0 10px;">Regime switch history — business/professional income can only move from New back to Old once in a lifetime (Form 10-IEA)</div>
+    <div class="pillrow" id="lockinPills">
+      <div class="pill active" data-lockin="no">Never switched back to New before</div>
+      <div class="pill" data-lockin="yes">Already used my one-time switch back to New</div>
+    </div>
+    <div id="lockinWarning" class="live-preview" style="display:none;margin-top:14px;border-color:#5C382F;color:var(--danger);">
+      Old Regime is no longer available to you — once you've switched back to New after previously opting for Old, the law doesn't allow opting for Old again. The comparison below will show New Regime only.
+    </div>
   </div>
 
   <!-- Schedule BP: month-wise income & expenses -->
@@ -392,9 +474,11 @@
     </div>
 
     <div class="bp-summary">
-      <div class="item income"><div class="lbl">Total income</div><div class="amt" id="sumIncome">₹0</div></div>
+      <div class="item income"><div class="lbl">Total income (gross)</div><div class="amt" id="sumIncome">₹0</div></div>
       <div class="item expense"><div class="lbl">Total expenses</div><div class="amt" id="sumExpense">₹0</div></div>
       <div class="item net"><div class="lbl">Net business profit</div><div class="amt" id="sumNet">₹0</div></div>
+      <div class="item tds"><div class="lbl">TDS deducted</div><div class="amt" id="sumTdsBar">₹0</div></div>
+      <div class="item received"><div class="lbl">Net received (after TDS)</div><div class="amt" id="sumNetReceived">₹0</div></div>
     </div>
 
     <div class="ledger-toolbar">
@@ -403,13 +487,29 @@
     </div>
 
     <div class="entry-form" id="incomeForm">
+      <div class="mode-toggle">
+        <span class="mode-toggle-lbl">I'm entering the:</span>
+        <button class="mode-pill" id="modeGross" type="button" data-mode="gross">Gross amount (before TDS)</button>
+        <button class="mode-pill active" id="modeNet" type="button" data-mode="net">Net amount received (after TDS)</button>
+      </div>
       <div class="row">
         <div><label>Month</label><select id="incMonth"></select></div>
         <div><label>Category</label><select id="incCategory"></select></div>
         <div><label>Description</label><input type="text" id="incDesc" placeholder="Optional"></div>
-        <div><label>Amount</label><input type="number" id="incAmount" placeholder="0" min="0"></div>
+        <div><label id="incAmountLabel">Net amount received</label><input type="number" id="incAmount" placeholder="0" min="0"></div>
+        <div><label>TDS rate</label>
+          <select id="incTdsRate">
+            <option value="0">No TDS</option>
+            <option value="5">5%</option>
+            <option value="10" selected>10%</option>
+            <option value="15">15%</option>
+            <option value="20">20%</option>
+          </select>
+        </div>
         <button class="submit-btn" id="incSubmit" type="button">Add</button>
       </div>
+      <div class="live-preview" id="incPreview">Enter an amount to see the gross / TDS / net breakup.</div>
+      <div class="hint">Whichever you know — the invoice's gross value, or what actually landed in your bank after TDS — enter that and pick the rate; the other two numbers are worked out automatically. The full <b>gross</b> amount is what counts as taxable income; the TDS is credited against your final tax below. 10% is the standard rate under Sec 194J for professional/consultancy fees.</div>
     </div>
 
     <div class="entry-form" id="expenseForm">
@@ -427,6 +527,70 @@
     <div class="month-grid" id="monthGrid"></div>
   </div>
 
+  <!-- Tax audit check -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SEC 44AB</span><h2>Tax audit applicability</h2></div>
+      <div class="schedule-note">Checked against gross receipts above</div>
+    </div>
+    <div class="pillrow" id="auditTypePills" style="margin-bottom:14px;">
+      <div class="pill active" data-audit-type="business">Business (trading/goods/services co.)</div>
+      <div class="pill" data-audit-type="profession">Profession (consulting/personal services)</div>
+    </div>
+    <div class="pillrow" id="auditDigitalPills">
+      <div class="pill active" data-audit-digital="yes">Mostly digital receipts &amp; payments (&gt;95%)</div>
+      <div class="pill" data-audit-digital="no">Meaningful cash dealings</div>
+    </div>
+    <div class="live-preview" id="auditResult" style="margin-top:16px;"></div>
+  </div>
+
+  <!-- Filing deadline & 234F -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SEC 139 / 234F</span><h2>Filing deadline check</h2></div>
+      <div class="schedule-note">Based on today's date and the audit check above</div>
+    </div>
+    <div class="live-preview" id="filingResult"></div>
+  </div>
+
+  <!-- Compliance checklist -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">CHECKLIST</span><h2>A few more things to verify</h2></div>
+      <div class="schedule-note">Flags only — not computed by this tool</div>
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.85;">
+      <div>→ <b>Foreign assets/accounts (Schedule FA):</b> if you (or Avanthi) hold any foreign bank account, brokerage, ESOP, or directorship abroad at any point in the year, disclosure is mandatory regardless of value — penalties under the Black Money Act are severe and separate from income tax penalties.</div>
+      <div style="margin-top:8px;">→ <b>Partner in a firm (Schedule IF):</b> if Healup or any other firm pays you remuneration/interest as a partner, that's reported separately from this business income, and since FY 2025-26 firms must deduct TDS at 10% on partner remuneration over ₹20,000/year under Sec 194T — check that's been credited.</div>
+      <div style="margin-top:8px;">→ <b>Books of account (Sec 44AA):</b> if you're not using presumptive taxation, income over ₹2.5L or turnover over ₹25L in any of the last 3 years means you're required to maintain regular books — not just this tracker, but statutory books your CA can certify.</div>
+      <div style="margin-top:8px;">→ <b>26AS/AIS reconciliation:</b> the TDS reconciliation tool further down only checks what you upload against what you've logged — it doesn't replace actually opening your AIS/26AS on the portal before filing.</div>
+    </div>
+  </div>
+
+  <!-- Presumptive taxation -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code" id="adaSectionCode">SEC 44AD/44ADA</span><h2>Presumptive taxation check</h2></div>
+      <div class="schedule-note">Auto-picks whichever computes lower tax, per regime</div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.6;margin:0 0 16px;" id="adaExplainer">
+      A specified <b>profession</b> (legal, medical, engineering, architecture, accountancy, technical consultancy, interior decoration, and a few notified others) can declare <b>50% of gross receipts as taxable profit</b> under Sec 44ADA, up to ₹50L receipts (₹75L if mostly digital). An eligible <b>business</b> can declare <b>6% (digital) or 8% (cash) of turnover</b> under Sec 44AD instead, up to ₹2cr (₹3cr if mostly digital) — but not businesses earning commission/brokerage, or leasing goods carriages. Neither is "tax-free income" — it's a deemed minimum profit that's still fully taxed. It only helps if your real expenses run above what the deemed rate implies; if your actual books already show a lower profit, that beats presumptive taxation on its own.
+    </p>
+    <div class="schedule-note" style="margin-bottom:10px;">Which section applies to this income</div>
+    <div class="pillrow" id="presumptiveTypePills" style="margin-bottom:16px;">
+      <div class="pill active" data-presumptive-type="business">Sec 44AD — business</div>
+      <div class="pill" data-presumptive-type="profession">Sec 44ADA — specified profession (doctor, CA, architect, etc.)</div>
+    </div>
+    <div class="pillrow" id="adaEligiblePills">
+      <div class="pill" data-ada="yes" id="adaYesPill">I qualify for the presumptive scheme above</div>
+      <div class="pill active" data-ada="no">Not applicable / doesn't qualify</div>
+    </div>
+    <div class="live-preview" id="adaResult" style="margin-top:16px;"></div>
+    <div class="live-preview" id="adaLockinNote" style="display:none;margin-top:10px;border-color:#5C382F;color:var(--danger);">
+      One more thing to check yourself: if you used presumptive taxation in an earlier year and then declared lower actual profit under regular books in any of the following 5 years, you lose eligibility for those 5 years and audit becomes mandatory regardless of receipts. This tool doesn't track your filing history — confirm this with your CA if you've used presumptive taxation before. Also: presumptive taxpayers pay 100% of advance tax in a single instalment by 15 March, not the usual quarterly schedule — the advance tax progress table below adjusts for this automatically when this method wins.
+    </div>
+  </div>
+
   <!-- Other income heads -->
   <div class="card">
     <div class="schedule-head">
@@ -439,16 +603,21 @@
         <div class="inputwrap"><span class="rs">₹</span><input type="number" id="salary" placeholder="0" min="0"></div>
       </div>
       <div class="field">
-        <label>Net income from house property <span class="cap">Schedule HP · loss allowed</span></label>
-        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hp" placeholder="0, or negative for a loss"></div>
+        <label>Employer's NPS contribution <span class="cap">Sec 80CCD(2) · both regimes</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="empNps" placeholder="0" min="0"></div>
       </div>
     </div>
     <div class="grid" style="margin-top:20px;">
+      <div class="field">
+        <label>Net income from house property <span class="cap">Schedule HP · loss allowed</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="hp" placeholder="0, or negative for a loss"></div>
+      </div>
       <div class="field">
         <label>Other income — interest, FD, etc. <span class="cap">Schedule OS</span></label>
         <div class="inputwrap"><span class="rs">₹</span><input type="number" id="other" placeholder="0" min="0"></div>
       </div>
     </div>
+    <p style="font-size:12px;color:var(--muted2);margin:14px 0 0;line-height:1.6;">Sec 80CCD(2) is the one deduction that survives the New Regime — up to 14% of salary (basic + DA) if your employer routes it into your NPS account. Cap enforced below at 14% of the salary entered above.</p>
   </div>
 
   <!-- Schedule CG -->
@@ -522,6 +691,66 @@
     </div>
   </div>
 
+  <!-- Schedule IT -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">SCHEDULE IT</span><h2>Taxes already paid</h2></div>
+      <div class="schedule-note">TDS credit + advance tax, set off against the final bill</div>
+    </div>
+
+    <div class="bp-summary">
+      <div class="item income"><div class="lbl">TDS credited (from income above)</div><div class="amt" id="sumTdsFromIncome">₹0</div></div>
+      <div class="item net"><div class="lbl">Total taxes paid so far</div><div class="amt" id="sumTaxesPaid">₹0</div></div>
+    </div>
+
+    <div class="grid" style="margin-bottom:20px;">
+      <div class="field">
+        <label>Other TDS — salary, bank interest, rent, etc. <span class="cap">Form 16 / 16A / 26AS</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="otherTds" placeholder="0" min="0"></div>
+      </div>
+      <div class="field">
+        <label>TCS collected <span class="cap">Sec 206C · foreign remittance/car/etc.</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="tcs" placeholder="0" min="0"></div>
+      </div>
+    </div>
+    <div class="grid" style="margin-bottom:20px;">
+      <div class="field">
+        <label>Self-assessment tax already paid <span class="cap">if any</span></label>
+        <div class="inputwrap"><span class="rs">₹</span><input type="number" id="selfAssess" placeholder="0" min="0"></div>
+      </div>
+    </div>
+
+    <div class="schedule-note" style="margin:22px 0 10px;">Advance tax — log payments whenever you make them</div>
+    <button class="btn-add income" id="showAdvanceForm" type="button">+ Add advance tax payment</button>
+    <div class="entry-form" id="advanceForm">
+      <div class="row" style="grid-template-columns:160px 160px auto;">
+        <div><label>Date paid</label><input type="date" id="advDate"></div>
+        <div><label>Amount</label><input type="number" id="advAmount" placeholder="0" min="0"></div>
+        <button class="submit-btn" id="advSubmit" type="button">Add</button>
+      </div>
+      <div class="hint">Due dates for the year: 15 Jun (15%), 15 Sep (45% cumulative), 15 Dec (75% cumulative), 15 Mar (100%) — but nothing stops you paying smaller amounts in between whenever there's cash to spare.</div>
+    </div>
+    <div id="advanceTableWrap"></div>
+
+    <div class="schedule-note" style="margin:22px 0 10px;">Advance tax progress — checked against whichever regime currently has the lower bill</div>
+    <div id="advanceProgressWrap"></div>
+  </div>
+
+  <!-- TDS reconciliation -->
+  <div class="card">
+    <div class="schedule-head">
+      <div class="schedule-title"><span class="schedule-code">RECONCILE</span><h2>Check TDS against your report</h2></div>
+      <div class="schedule-note">Upload a CSV/Excel export — not the raw 26AS/AIS PDF</div>
+    </div>
+    <p style="font-size:12.5px;color:var(--muted);line-height:1.6;margin:0 0 16px;">
+      Export a simple sheet from TRACES/26AS/AIS (or type one up) with columns for <b>Date</b>, <b>Party/Deductor</b>, <b>Amount</b> and <b>TDS</b> — column names just need to contain those words, order doesn't matter. This checks it against the TDS you've logged on income entries above; it can't read the government PDF directly.
+    </p>
+    <input type="file" id="tdsFileInput" accept=".csv,.xlsx,.xls" style="display:none;">
+    <button class="btn-add income" id="tdsUploadBtn" type="button">+ Upload TDS report</button>
+    <span id="tdsFileName" style="font-size:12px;color:var(--muted2);margin-left:10px;"></span>
+    <div id="tdsReconcileWrap" style="margin-top:16px;"></div>
+  </div>
+
   <!-- Results -->
   <div class="results-head">
     <div class="eyebrow">Result</div>
@@ -532,7 +761,7 @@
   <div class="savings-strip" id="savingsStrip"></div>
 
   <footer>
-    <b>Basis:</b> Finance Act 2025 rates for FY 2025-26 (AY 2026-27) — new regime slabs of ₹0–4L nil, 5%/10%/15%/20%/25%/30% thereafter with a ₹75,000 standard deduction and Section 87A rebate up to ₹60,000 (nil tax to ₹12L); old regime unchanged with a ₹50,000 standard deduction and ₹12,500 rebate up to ₹5L. Health &amp; education cess of 4% applies to both. Surcharge (10%/15%/25%, capped at 25% in the new regime) is applied where total income exceeds ₹50L, <b>without marginal relief</b> — near a threshold, actual tax may be a little lower than shown. Section 87A rebate is applied only against tax on normal-rate income, not against Sec 111A/112A capital gains tax. Under the new regime a house-property loss cannot be set off against other heads, and Chapter VI-A deductions (other than 80CCD(2)/80JJAA) aren't available at all. Section 80GG and 80D caps are simplified. This sheet is for planning only — it isn't tax advice, and doesn't replace a CA's sign-off on your actual return.
+    <b>Basis:</b> Finance Act 2025 rates for FY 2025-26 (AY 2026-27) — new regime slabs of ₹0–4L nil, 5%/10%/15%/20%/25%/30% thereafter with a ₹75,000 standard deduction and Section 87A rebate up to ₹60,000 (nil tax to ₹12L); old regime unchanged with a ₹50,000 standard deduction and ₹12,500 rebate up to ₹5L. Health &amp; education cess of 4% applies to both. Surcharge (10%/15%/25%, capped at 25% in the new regime) is applied where total income exceeds ₹50L, <b>without marginal relief</b> — near a threshold, actual tax may be a little lower than shown. Section 87A rebate is applied only against tax on normal-rate income, not against Sec 111A/112A capital gains tax. Under the new regime a house-property loss cannot be set off against other heads, and Chapter VI-A deductions (other than 80CCD(2)/80JJAA) aren't available at all. Section 80GG and 80D caps are simplified. This sheet is for planning only — it isn't tax advice, and doesn't replace a CA's sign-off on your actual return. <b>Taxes already paid:</b> TDS logged against an income entry, other TDS (salary/interest/rent), advance tax instalments, and self-assessment tax are netted off the total liability to show your balance payable or refund. If less than 90% of the year's tax is paid by 31 March, or an instalment is short, interest under Sections 234B/234C can apply — this sheet doesn't compute that interest, so a shortfall near year-end is worth flagging to your CA.
   </footer>
 
 </div>
@@ -541,16 +770,27 @@
 // ---- Fill these in from Supabase → Project Settings → API ----
 const SUPABASE_URL = 'https://wctasizazajoggikmshd.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_6wN8vafpwOIez63M8zEvxQ_8TelVB6i';
-const sb = (SUPABASE_URL.startsWith('http')) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+let sb = null;
+try{
+  if(SUPABASE_URL.startsWith('http') && typeof supabase !== 'undefined'){
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  }
+}catch(e){ console.error('Supabase client failed to initialise:', e); }
 
 const MONTHS = ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
 const INCOME_CATEGORIES = ['Sales / Service Revenue','Consulting & Professional Fees','Interest on Business Deposits','Other Business Income'];
 const EXPENSE_CATEGORIES = ['Salaries & Wages','Rent','Office & Administrative Expenses','Professional & Consultancy Fees','Travel & Conveyance','Marketing & Advertising','Depreciation','Interest on Business Loan','Repairs & Maintenance','Utilities & Communication','Bank Charges & Commission','Insurance Premium','Other Business Expense'];
-const SIMPLE_IDS = ['salary','hp','other','stcgEq','ltcgEq','ltcgOther','s80c','s80d','nps','homeint','s80tta','s80e','s80g','s80gg','otherVIA'];
+const SIMPLE_IDS = ['salary','empNps','hp','other','stcgEq','ltcgEq','ltcgOther','s80c','s80d','nps','homeint','s80tta','s80e','s80g','s80gg','otherVIA','otherTds','tcs','selfAssess'];
 
 let age = 'below60';
+let lockedToNew = false;
+let auditType = 'business';
+let auditDigital = true;
+let adaEligible = false;
+let presumptiveType = 'business';
 let incomeEntries = [];
 let expenseEntries = [];
+let advanceTaxEntries = [];
 let saveTimer = null;
 let currentUserId = null;
 let currentUserEmail = null;
@@ -580,6 +820,250 @@ function updateTtaCapLabel(){
   document.getElementById('ttaCap').textContent = age==='below60' ? 'Sec 80TTA · cap ₹10,000' : 'Sec 80TTB · cap ₹50,000';
 }
 
+document.getElementById('lockinPills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#lockinPills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); lockedToNew = p.dataset.lockin === 'yes';
+  document.getElementById('lockinWarning').style.display = lockedToNew ? 'block' : 'none';
+  calculate(); scheduleSave();
+});
+function updateLockinPillsUI(){
+  document.querySelectorAll('#lockinPills .pill').forEach(x=>x.classList.toggle('active', (x.dataset.lockin==='yes')===lockedToNew));
+  document.getElementById('lockinWarning').style.display = lockedToNew ? 'block' : 'none';
+}
+
+document.getElementById('auditTypePills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#auditTypePills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); auditType = p.dataset.auditType;
+  updateAuditCheck(); scheduleSave();
+});
+document.getElementById('auditDigitalPills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#auditDigitalPills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); auditDigital = p.dataset.auditDigital === 'yes';
+  updateAuditCheck(); scheduleSave();
+});
+function updateAuditPillsUI(){
+  document.querySelectorAll('#auditTypePills .pill').forEach(x=>x.classList.toggle('active', x.dataset.auditType===auditType));
+  document.querySelectorAll('#auditDigitalPills .pill').forEach(x=>x.classList.toggle('active', (x.dataset.auditDigital==='yes')===auditDigital));
+}
+
+function updateAuditCheck(){
+  const gross = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  let threshold;
+  if(auditType==='business') threshold = auditDigital ? 100000000 : 10000000;
+  else threshold = auditDigital ? 7500000 : 5000000;
+  const el = document.getElementById('auditResult');
+  let chip, msg;
+  if(gross > threshold){
+    chip = '<span class="status-chip bad">Audit likely required</span>';
+    msg = `Gross receipts of ${inr(gross)} cross the ${inr(threshold)} threshold. A tax audit report (Sec 44AB) is typically required — under the Finance Act 2026 schedule for AY 2026-27, that generally means the audit report is due 30 September and the ITR itself by 31 October (vs 31 August for non-audit ITR-3/4 filers). Confirm the exact dates for this AY, they're occasionally revised.`;
+  } else if(gross > threshold*0.85){
+    chip = '<span class="status-chip warn">Getting close</span>';
+    msg = `Gross receipts of ${inr(gross)} are within 15% of the ${inr(threshold)} audit threshold — worth keeping an eye on if the year isn't over yet. Without audit, ITR-3 is due 31 August for AY 2026-27.`;
+  } else {
+    chip = '<span class="status-chip ok">No audit expected</span>';
+    msg = `Gross receipts of ${inr(gross)} are comfortably under the ${inr(threshold)} threshold for ${auditType==='business'?'business':'professional'} income${auditDigital?' with mostly digital receipts':''}. Non-audit ITR-3 is due 31 August 2026 for AY 2026-27 — a month later than ITR-1/2, under a Finance Act 2026 change.`;
+  }
+  el.innerHTML = `${chip}<div style="margin-top:8px;">${msg}</div>`;
+  updateAdaCheck();
+  updateFilingCheck();
+}
+
+function totalBusinessIncomeQuiet(){
+  return incomeEntries.reduce((s,e)=>s+e.amount,0) - expenseEntries.reduce((s,e)=>s+e.amount,0);
+}
+
+function updateFilingCheck(){
+  const gross = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  let threshold;
+  if(auditType==='business') threshold = auditDigital ? 100000000 : 10000000;
+  else threshold = auditDigital ? 7500000 : 5000000;
+  const auditRequired = gross > threshold;
+
+  const dueDate = new Date(auditRequired ? '2026-10-31' : '2026-08-31');
+  const belatedDeadline = new Date('2026-12-31');
+  const today = new Date();
+  const el = document.getElementById('filingResult');
+  if(!el) return;
+
+  let totalIncomeRef = 0;
+  try{
+    const bi = totalBusinessIncomeQuiet();
+    const r = computeRegime(true, bi);
+    totalIncomeRef = r.totalIncome;
+  }catch(e){ totalIncomeRef = 0; }
+
+  if(today <= dueDate){
+    el.innerHTML = `<span class="status-chip ok">On time</span><div style="margin-top:8px;">Your due date is <b>${dueDate.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</b>${auditRequired ? ' (audit case)' : ' (non-audit ITR-3)'} — you're filing ahead of it as of today.</div>`;
+  } else if(today <= belatedDeadline){
+    const fee = totalIncomeRef > 500000 ? 5000 : 1000;
+    el.innerHTML = `<span class="status-chip warn">Belated return</span><div style="margin-top:8px;">Your original due date of <b>${dueDate.toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</b> has passed. You can still file a belated return under Sec 139(4) up to 31 December 2026, but a late fee under <b>Sec 234F of ${inr(fee)}</b> applies (₹1,000 if total income ≤₹5L, else ₹5,000). If any tax is still outstanding, <b>Sec 234A interest</b> (1% per month from the due date) may also apply on top of the 234B/234C figures shown further down — this tool doesn't add that separately. A belated filing also means you <b>can't carry forward business losses</b> to future years.</div>`;
+  } else {
+    el.innerHTML = `<span class="status-chip bad">Past belated deadline</span><div style="margin-top:8px;">Even the belated return window (31 December 2026) has passed. An updated return under Sec 139(8A) may still be possible within 48 months of the assessment year end, with additional tax — talk to your CA about this specifically, it's not something to work out from a planning sheet.</div>`;
+  }
+}
+
+document.getElementById('presumptiveTypePills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#presumptiveTypePills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); presumptiveType = p.dataset.presumptiveType;
+  updateAdaCheck(); calculate(); scheduleSave();
+});
+function updatePresumptiveTypePillsUI(){
+  document.querySelectorAll('#presumptiveTypePills .pill').forEach(x=>x.classList.toggle('active', x.dataset.presumptiveType===presumptiveType));
+}
+
+document.getElementById('adaEligiblePills').addEventListener('click', e=>{
+  const p = e.target.closest('.pill'); if(!p) return;
+  document.querySelectorAll('#adaEligiblePills .pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); adaEligible = p.dataset.ada === 'yes';
+  updateAdaCheck(); calculate(); scheduleSave();
+});
+function updateAdaPillsUI(){
+  document.querySelectorAll('#adaEligiblePills .pill').forEach(x=>x.classList.toggle('active', (x.dataset.ada==='yes')===adaEligible));
+}
+
+function presumptiveSection(){ return presumptiveType==='profession' ? '44ADA' : '44AD'; }
+function presumptiveThreshold(){
+  if(presumptiveType==='profession') return auditDigital ? 7500000 : 5000000;
+  return auditDigital ? 30000000 : 20000000;
+}
+function presumptiveRate(){
+  if(presumptiveType==='profession') return 0.5;
+  return auditDigital ? 0.06 : 0.08;
+}
+function ada44Threshold(){ return presumptiveThreshold(); } // kept for backward-compat naming
+
+function updateAdaCheck(){
+  const gross = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  const el = document.getElementById('adaResult');
+  const lockinNote = document.getElementById('adaLockinNote');
+  const section = presumptiveSection();
+  const threshold = presumptiveThreshold();
+  const rate = presumptiveRate();
+
+  document.getElementById('adaSectionCode').textContent = `SEC ${section}`;
+  document.getElementById('adaYesPill').textContent = presumptiveType==='profession'
+    ? 'I\'m a specified professional under 44AA(1)'
+    : 'This is an eligible business (not commission/brokerage/goods-carriage leasing)';
+
+  if(!adaEligible){
+    el.innerHTML = `<span class="status-chip warn">Not checked</span><div style="margin-top:8px;">Confirm eligibility above if Sec ${section} might apply — otherwise this stays out of the tax calculation.</div>`;
+    lockinNote.style.display = 'none';
+    return;
+  }
+  if(gross > threshold){
+    el.innerHTML = `<span class="status-chip bad">Not eligible this year</span><div style="margin-top:8px;">Gross receipts of ${inr(gross)} exceed the ${inr(threshold)} limit for Sec ${section} — the presumptive scheme doesn't apply, regular books are used.</div>`;
+    lockinNote.style.display = 'none';
+  } else {
+    const presumptive = Math.round(gross * rate);
+    el.innerHTML = `<span class="status-chip ok">Eligible</span><div style="margin-top:8px;">Gross receipts of ${inr(gross)} are within the ${inr(threshold)} limit. Sec ${section} presumptive profit would be ${inr(presumptive)} (${(rate*100)}% of receipts). The calculation below now compares this against your actual books and uses whichever gives the lower tax, per regime.</div>`;
+    lockinNote.style.display = 'block';
+  }
+}
+
+document.getElementById('printBtn').addEventListener('click', ()=>{
+  window.print();
+});
+
+document.getElementById('downloadPdfBtn').addEventListener('click', ()=>{
+  try{ generatePDF(); }catch(e){ console.error('PDF generation failed:', e); alert('PDF generation failed — check the console, or try Print instead.'); }
+});
+
+document.getElementById('downloadExcelBtn').addEventListener('click', ()=>{
+  try{ generateExcel(); }catch(e){ console.error('Excel generation failed:', e); alert('Excel generation failed — check the console.'); }
+});
+
+document.getElementById('tdsUploadBtn').addEventListener('click', ()=>{
+  document.getElementById('tdsFileInput').click();
+});
+document.getElementById('tdsFileInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  document.getElementById('tdsFileName').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, {type:'array', cellDates:true});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      reconcileTds(rows);
+    }catch(err){
+      console.error('TDS file parse failed:', err);
+      document.getElementById('tdsReconcileWrap').innerHTML =
+        '<div class="live-preview" style="border-color:#5C382F;color:var(--danger);">Couldn\'t read that file — make sure it\'s a CSV or Excel export, not a scanned PDF.</div>';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function findCol(row, keywords){
+  const keys = Object.keys(row);
+  for(const kw of keywords){
+    const hit = keys.find(k => k.toLowerCase().includes(kw));
+    if(hit) return hit;
+  }
+  return null;
+}
+
+function reconcileTds(rows){
+  if(!rows.length){
+    document.getElementById('tdsReconcileWrap').innerHTML = '<div class="empty-state">That file looks empty.</div>';
+    return;
+  }
+  const sample = rows[0];
+  const dateCol = findCol(sample, ['date']);
+  const partyCol = findCol(sample, ['party','deductor','client','name']);
+  const amountCol = findCol(sample, ['amount','gross','paid','credited']);
+  const tdsCol = findCol(sample, ['tds','deduct']);
+
+  if(!tdsCol){
+    document.getElementById('tdsReconcileWrap').innerHTML =
+      '<div class="live-preview" style="border-color:#5C382F;color:var(--danger);">Couldn\'t find a TDS column in that file — make sure one of the headers contains the word "TDS".</div>';
+    return;
+  }
+
+  const reportEntries = rows.map(r => ({
+    date: dateCol ? r[dateCol] : '',
+    party: partyCol ? r[partyCol] : '',
+    amount: parseFloat(r[amountCol]) || 0,
+    tds: parseFloat(r[tdsCol]) || 0
+  })).filter(r => r.tds > 0);
+
+  const calcEntries = incomeEntries.filter(e => e.tds > 0).map(e => ({...e, matched:false}));
+  const matches = [];
+  const onlyInReport = [];
+
+  reportEntries.forEach(rep => {
+    const hit = calcEntries.find(c => !c.matched && Math.abs(c.tds - rep.tds) <= 10);
+    if(hit){ hit.matched = true; matches.push({rep, calc:hit}); }
+    else onlyInReport.push(rep);
+  });
+  const onlyInCalc = calcEntries.filter(c => !c.matched);
+
+  const wrap = document.getElementById('tdsReconcileWrap');
+  let rowsHtml = '';
+  matches.forEach(m => {
+    rowsHtml += `<tr><td><span class="status-chip ok">Matched</span></td><td>${m.calc.category}</td><td class="amt-cell">${inr(m.calc.tds)}</td><td>${m.rep.party||'—'}</td></tr>`;
+  });
+  onlyInReport.forEach(r => {
+    rowsHtml += `<tr><td><span class="status-chip warn">In report only</span></td><td>${r.party||'—'}</td><td class="amt-cell">${inr(r.tds)}</td><td style="color:var(--muted2);">Not logged here — did you forget an income entry?</td></tr>`;
+  });
+  onlyInCalc.forEach(c => {
+    rowsHtml += `<tr><td><span class="status-chip bad">In sheet only</span></td><td>${c.category}</td><td class="amt-cell">${inr(c.tds)}</td><td style="color:var(--muted2);">Not in the uploaded report — check if the deductor has filed it yet</td></tr>`;
+  });
+
+  wrap.innerHTML = `
+    <div class="live-preview">${matches.length} matched · ${onlyInReport.length} only in report · ${onlyInCalc.length} only in this sheet</div>
+    <table class="progress-table" style="margin-top:12px;">
+      <thead><tr><th>Status</th><th>Category / Party</th><th style="text-align:right;">TDS</th><th>Note</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`;
+}
+
 document.getElementById('cgToggle').addEventListener('click', ()=>{
   const el = document.getElementById('cgFields');
   const open = el.classList.toggle('open');
@@ -594,19 +1078,65 @@ document.getElementById('showExpenseForm').addEventListener('click', ()=>{
   document.getElementById('expenseForm').classList.toggle('open');
   document.getElementById('incomeForm').classList.remove('open');
 });
+document.getElementById('showAdvanceForm').addEventListener('click', ()=>{
+  document.getElementById('advanceForm').classList.toggle('open');
+});
+
+let incAmountMode = 'net';
+
+function updateIncPreview(){
+  const rate = parseFloat(document.getElementById('incTdsRate').value) || 0;
+  const val = parseFloat(document.getElementById('incAmount').value);
+  const preview = document.getElementById('incPreview');
+  if(!val || val<=0){
+    preview.innerHTML = 'Enter an amount to see the gross / TDS / net breakup.';
+    return;
+  }
+  let gross, tds, net;
+  if(incAmountMode === 'gross'){
+    gross = val; tds = Math.round(gross * rate / 100); net = gross - tds;
+  } else {
+    net = val; gross = rate < 100 ? Math.round(net / (1 - rate/100)) : net; tds = gross - net;
+  }
+  preview.innerHTML = `Gross <b>${inr(gross)}</b> · TDS <b>${inr(tds)}</b> (${rate}%) · Net you'll receive <b>${inr(net)}</b>`;
+}
+
+function setIncMode(mode){
+  incAmountMode = mode;
+  document.getElementById('modeGross').classList.toggle('active', mode==='gross');
+  document.getElementById('modeNet').classList.toggle('active', mode==='net');
+  document.getElementById('incAmountLabel').textContent = mode==='gross' ? 'Gross amount' : 'Net amount received';
+  updateIncPreview();
+}
+document.getElementById('modeGross').addEventListener('click', ()=> setIncMode('gross'));
+document.getElementById('modeNet').addEventListener('click', ()=> setIncMode('net'));
+document.getElementById('incAmount').addEventListener('input', updateIncPreview);
+document.getElementById('incTdsRate').addEventListener('change', updateIncPreview);
 
 document.getElementById('incSubmit').addEventListener('click', ()=>{
-  const amt = parseFloat(document.getElementById('incAmount').value);
-  if(!amt || amt<=0) return;
+  const val = parseFloat(document.getElementById('incAmount').value);
+  if(!val || val<=0) return;
+  const rate = parseFloat(document.getElementById('incTdsRate').value) || 0;
+  let gross, tds;
+  if(incAmountMode === 'gross'){
+    gross = val; tds = Math.round(gross * rate / 100);
+  } else {
+    const net = val;
+    gross = rate < 100 ? Math.round(net / (1 - rate/100)) : net;
+    tds = gross - net;
+  }
   incomeEntries.push({
     id: 'i'+Date.now()+Math.random().toString(36).slice(2,7),
     month: document.getElementById('incMonth').value,
     category: document.getElementById('incCategory').value,
     desc: document.getElementById('incDesc').value.trim(),
-    amount: amt
+    amount: gross,
+    tdsRate: rate,
+    tds: tds
   });
   document.getElementById('incAmount').value = '';
   document.getElementById('incDesc').value = '';
+  updateIncPreview();
   renderEntries(); calculate(); scheduleSave();
 });
 document.getElementById('expSubmit').addEventListener('click', ()=>{
@@ -624,15 +1154,28 @@ document.getElementById('expSubmit').addEventListener('click', ()=>{
   renderEntries(); calculate(); scheduleSave();
 });
 
+document.getElementById('advSubmit').addEventListener('click', ()=>{
+  const amt = parseFloat(document.getElementById('advAmount').value);
+  const date = document.getElementById('advDate').value;
+  if(!amt || amt<=0) return;
+  advanceTaxEntries.push({
+    id: 'a'+Date.now()+Math.random().toString(36).slice(2,7),
+    date: date || '',
+    amount: amt
+  });
+  document.getElementById('advAmount').value = '';
+  document.getElementById('advDate').value = '';
+  renderAdvanceTax(); calculate(); scheduleSave();
+});
+
 document.getElementById('resetBtn').addEventListener('click', async ()=>{
-  if(!currentUserId) return;
-  if(!confirm('Clear all your saved income, expenses and inputs? This cannot be undone.')) return;
-  incomeEntries = []; expenseEntries = []; age = 'below60';
+  if(!confirm('Clear everything you\'ve entered on this sheet? This cannot be undone.')) return;
+  incomeEntries = []; expenseEntries = []; advanceTaxEntries = [];
+  age = 'below60'; lockedToNew = false; auditType = 'business'; auditDigital = true; adaEligible = false; presumptiveType = 'business';
   SIMPLE_IDS.forEach(id => document.getElementById(id).value = '');
-  updateAgePillsUI();
-  renderEntries(); calculate();
-  await saveState();
-  setSaveStatus('saved','Cleared');
+  updateAgePillsUI(); updateLockinPillsUI(); updateAuditPillsUI(); updateAdaPillsUI(); updatePresumptiveTypePillsUI();
+  renderEntries(); renderAdvanceTax(); calculate();
+  if(currentUserId){ await saveState(); setSaveStatus('saved','Cleared'); }
 });
 
 document.getElementById('signOutBtn').addEventListener('click', async ()=>{
@@ -641,6 +1184,28 @@ document.getElementById('signOutBtn').addEventListener('click', async ()=>{
   document.getElementById('profileChip').style.display = 'none';
   document.getElementById('profileOverlay').classList.remove('hidden');
 });
+
+document.getElementById('guestModeBtn').addEventListener('click', ()=>{
+  enterGuestMode();
+});
+document.getElementById('guestSignInBtn').addEventListener('click', ()=>{
+  document.getElementById('guestChip').style.display = 'none';
+  document.getElementById('profileOverlay').classList.remove('hidden');
+});
+
+function enterGuestMode(){
+  document.getElementById('profileOverlay').classList.add('hidden');
+  document.getElementById('guestChip').style.display = 'inline-flex';
+  document.getElementById('profileChip').style.display = 'none';
+  setSaveStatus('','Not saved in guest mode');
+  updateAgePillsUI();
+  updateLockinPillsUI();
+  updateAuditPillsUI();
+  updateAdaPillsUI(); updatePresumptiveTypePillsUI();
+  renderEntries();
+  renderAdvanceTax();
+  calculate();
+}
 
 document.getElementById('authToggleBtn').addEventListener('click', ()=>{
   isSignUpMode = !isSignUpMode;
@@ -722,7 +1287,7 @@ function renderEntries(){
   } else {
     wrap.innerHTML = `
       <table class="entries-table">
-        <thead><tr><th>Month</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+        <thead><tr><th>Month</th><th>Type</th><th>Category</th><th>Description</th><th style="text-align:right;">Gross</th><th style="text-align:right;">TDS</th><th style="text-align:right;">Net</th><th></th></tr></thead>
         <tbody>
           ${all.map(e => `
             <tr>
@@ -731,6 +1296,8 @@ function renderEntries(){
               <td>${e.category}</td>
               <td class="desc-cell">${e.desc || '—'}</td>
               <td class="amt-cell">${inr(e.amount)}</td>
+              <td class="amt-cell">${e.type==='income' && e.tds ? inr(e.tds) + ` <span style="color:var(--muted2);">(${e.tdsRate}%)</span>` : '—'}</td>
+              <td class="amt-cell">${e.type==='income' ? inr(e.amount - (e.tds||0)) : '—'}</td>
               <td><button class="del-btn" data-id="${e.id}" data-type="${e.type}" title="Delete">✕</button></td>
             </tr>`).join('')}
         </tbody>
@@ -753,13 +1320,60 @@ function renderEntries(){
   }).join('');
 }
 
+function formatDate(d){
+  if(!d) return '—';
+  const [y,m,day] = d.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${day} ${names[parseInt(m,10)-1]} ${y}`;
+}
+
+function renderAdvanceTax(){
+  const wrap = document.getElementById('advanceTableWrap');
+  const sorted = [...advanceTaxEntries].sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+  if(sorted.length===0){
+    wrap.innerHTML = '<div class="empty-state">No advance tax logged yet — add a payment whenever you make one.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="entries-table">
+      <thead><tr><th>Date paid</th><th style="text-align:right;">Amount</th><th></th></tr></thead>
+      <tbody>
+        ${sorted.map(a => `
+          <tr>
+            <td>${formatDate(a.date)}</td>
+            <td class="amt-cell">${inr(a.amount)}</td>
+            <td><button class="del-btn" data-id="${a.id}" title="Delete">✕</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  wrap.querySelectorAll('.del-btn').forEach(btn => btn.addEventListener('click', ()=>{
+    advanceTaxEntries = advanceTaxEntries.filter(x=>x.id!==btn.dataset.id);
+    renderAdvanceTax(); calculate(); scheduleSave();
+  }));
+}
+
 function totalBusinessIncome(){
   const inc = incomeEntries.reduce((s,e)=>s+e.amount,0);
   const exp = expenseEntries.reduce((s,e)=>s+e.amount,0);
+  const tds = incomeEntries.reduce((s,e)=>s+(e.tds||0),0);
   document.getElementById('sumIncome').textContent = inr(inc);
   document.getElementById('sumExpense').textContent = inr(exp);
   document.getElementById('sumNet').textContent = inr(inc-exp);
+  document.getElementById('sumTdsBar').textContent = inr(tds);
+  document.getElementById('sumNetReceived').textContent = inr(inc-tds);
+  updateAuditCheck();
   return inc - exp;
+}
+
+function totalTaxesPaid(){
+  const tdsFromIncome = incomeEntries.reduce((s,e)=>s+(e.tds||0),0);
+  const otherTds = num('otherTds');
+  const tcs = num('tcs');
+  const selfAssess = num('selfAssess');
+  const advance = advanceTaxEntries.reduce((s,a)=>s+a.amount,0);
+  document.getElementById('sumTdsFromIncome').textContent = inr(tdsFromIncome);
+  document.getElementById('sumTaxesPaid').textContent = inr(tdsFromIncome + otherTds + tcs + selfAssess + advance);
+  return tdsFromIncome + otherTds + tcs + selfAssess + advance;
 }
 
 function slabTax(income, slabs){
@@ -785,13 +1399,27 @@ const OLD_SLABS = {
   supersenior: [{upto:500000,rate:0},{upto:1000000,rate:0.20},{upto:Infinity,rate:0.30}],
 };
 
-function getSurcharge(totalIncome, tax, isNew){
-  let rate = 0;
-  if(totalIncome > 50000000) rate = isNew ? 0.25 : 0.37;
-  else if(totalIncome > 20000000) rate = 0.25;
-  else if(totalIncome > 10000000) rate = 0.15;
-  else if(totalIncome > 5000000) rate = 0.10;
-  return tax * rate;
+function getSurcharge(totalIncome, tax, isNew, slabIncome, specialTax, slabs){
+  let rate = 0, threshold = 0;
+  if(totalIncome > 50000000){ rate = isNew ? 0.25 : 0.37; threshold = 50000000; }
+  else if(totalIncome > 20000000){ rate = 0.25; threshold = 20000000; }
+  else if(totalIncome > 10000000){ rate = 0.15; threshold = 10000000; }
+  else if(totalIncome > 5000000){ rate = 0.10; threshold = 5000000; }
+  else return 0;
+
+  const surcharge = tax * rate;
+
+  // Marginal relief: tax+surcharge shouldn't exceed tax-at-threshold + income over threshold
+  const excessOverThreshold = totalIncome - threshold;
+  const adjustedSlabIncome = Math.max(0, slabIncome - excessOverThreshold);
+  const taxAtThresholdSlab = slabTax(adjustedSlabIncome, slabs);
+  const taxAtThreshold = taxAtThresholdSlab + specialTax; // rebate doesn't re-apply at these income levels
+  const maxAllowed = taxAtThreshold + excessOverThreshold;
+
+  if(tax + surcharge > maxAllowed){
+    return Math.max(0, maxAllowed - tax);
+  }
+  return surcharge;
 }
 
 function computeRegime(isNew, businessIncome){
@@ -803,7 +1431,9 @@ function computeRegime(isNew, businessIncome){
   const ltcgOther = num('ltcgOther');
 
   const stdDed = salary > 0 ? (isNew ? 75000 : 50000) : 0;
-  const salaryTaxable = Math.max(salary - stdDed, 0);
+  const empNpsCap = salary * 0.14;
+  const empNps = Math.min(num('empNps'), empNpsCap > 0 ? empNpsCap : 0);
+  const salaryTaxable = Math.max(salary - stdDed - empNps, 0);
   const hp = isNew ? Math.max(hpRaw, 0) : Math.max(hpRaw, -200000);
 
   let viaTotal = 0;
@@ -838,39 +1468,128 @@ function computeRegime(isNew, businessIncome){
   if(totalIncome <= rebateThreshold) rebate = Math.min(taxOnSlab, rebateCap);
 
   const taxBeforeSurcharge = (taxOnSlab - rebate) + specialTax;
-  const surcharge = getSurcharge(totalIncome, taxBeforeSurcharge, isNew);
+  const surcharge = getSurcharge(totalIncome, taxBeforeSurcharge, isNew, slabIncome, specialTax, slabs);
   const cess = (taxBeforeSurcharge + surcharge) * 0.04;
   const totalTax = taxBeforeSurcharge + surcharge + cess;
 
   return {
-    business: businessIncome, salary, salaryTaxable, hp, other, viaTotal,
+    business: businessIncome, salary, salaryTaxable, empNps, hp, other, viaTotal,
     slabIncome, specialIncomeGross, specialTax, totalIncome,
     taxOnSlab, rebate, surcharge, cess, totalTax
   };
 }
 
 function ledgerRow(lbl, val, opts={}){
-  const cls = ['ledger-row', opts.total?'total':'', val<0?'neg':''].join(' ').trim();
+  const cls = ['ledger-row', opts.total?'total':'', opts.balance?'balance':'', val<0?'neg':'', (opts.balance && val<0)?'pos':''].join(' ').trim();
   return `<div class="${cls}"><span class="lbl">${lbl}</span><span class="dots"></span><span class="val">${inr(val)}</span></div>`;
 }
 
-function renderCard(r, isNew, isWinner){
+const ADVANCE_DUE_DATES = [
+  {label:'Q1 · 15 Jun 2025', date:'2025-06-15', pct:0.15, months:3},
+  {label:'Q2 · 15 Sep 2025', date:'2025-09-15', pct:0.45, months:3},
+  {label:'Q3 · 15 Dec 2025', date:'2025-12-15', pct:0.75, months:3},
+  {label:'Q4 · 15 Mar 2026', date:'2026-03-15', pct:1.00, months:1},
+];
+
+const PRESUMPTIVE_DUE_DATES = [
+  {label:'Full amount · 15 Mar 2026', date:'2026-03-15', pct:1.00, months:1},
+];
+
+function computeInterest(totalTax, method){
+  const tdsFromIncome = incomeEntries.reduce((s,e)=>s+(e.tds||0),0);
+  const otherTds = num('otherTds');
+  const tcs = num('tcs');
+  const selfAssess = num('selfAssess');
+  const isPresumptive = method==='44AD' || method==='44ADA';
+  const dueDates = isPresumptive ? PRESUMPTIVE_DUE_DATES : ADVANCE_DUE_DATES;
+
+  const rows = dueDates.map(d => {
+    const advTillThen = advanceTaxEntries.filter(a=>a.date && a.date<=d.date).reduce((s,a)=>s+a.amount,0);
+    const paidTillThen = tdsFromIncome + otherTds + tcs + advTillThen;
+    const required = totalTax * d.pct;
+    const shortfall = Math.max(0, required - paidTillThen);
+    const interest = Math.round(shortfall * 0.01 * d.months);
+    return {...d, paidTillThen, required, shortfall, interest};
+  });
+  const interest234C = rows.reduce((s,r)=>s+r.interest,0);
+
+  const yearEnd = '2026-03-31';
+  const advByYearEnd = advanceTaxEntries.filter(a=>a.date && a.date<=yearEnd).reduce((s,a)=>s+a.amount,0);
+  const paidByYearEnd = tdsFromIncome + otherTds + tcs + advByYearEnd;
+  let interest234B = 0;
+  if(paidByYearEnd < totalTax*0.90){
+    const outstanding = Math.max(0, totalTax - paidByYearEnd - selfAssess);
+    const start = new Date('2026-04-01');
+    const now = new Date();
+    let months = 0;
+    if(now >= start){
+      months = (now.getFullYear()-start.getFullYear())*12 + (now.getMonth()-start.getMonth()) + 1;
+      months = Math.max(months,1);
+    }
+    interest234B = Math.round(outstanding * 0.01 * months);
+  }
+  return { rows, interest234C, interest234B, isPresumptive };
+}
+
+function renderAdvanceProgress(totalTax, regimeLabel, method){
+  const { rows, isPresumptive } = computeInterest(totalTax, method);
+  const wrap = document.getElementById('advanceProgressWrap');
+  const presumptiveNote = isPresumptive
+    ? `<div class="live-preview" style="margin-bottom:8px;">${regimeLabel} is using presumptive taxation — the usual quarterly schedule doesn't apply; 100% of advance tax is due in one instalment by 15 March.</div>`
+    : '';
+  wrap.innerHTML = presumptiveNote + `
+    <div class="schedule-note" style="margin-bottom:8px;">Reference: ${regimeLabel}, total liability ${inr(totalTax)}</div>
+    <table class="progress-table">
+      <thead><tr><th>Due date</th><th style="text-align:right;">Required</th><th style="text-align:right;">Paid by then</th><th>Status</th></tr></thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td>${r.label}</td>
+            <td class="amt-cell">${inr(r.required)}</td>
+            <td class="amt-cell">${inr(r.paidTillThen)}</td>
+            <td>${r.shortfall>0 ? '<span class="status-chip bad">Shortfall</span>' : '<span class="status-chip ok">Met</span>'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function computeRegimeSmart(isNew, regularIncome, presumptiveIncome, eligible, section){
+  const rRegular = computeRegime(isNew, regularIncome);
+  rRegular.method = 'regular';
+  if(!eligible) return rRegular;
+  const rPresumptive = computeRegime(isNew, presumptiveIncome);
+  rPresumptive.method = section;
+  return rPresumptive.totalTax < rRegular.totalTax ? rPresumptive : rRegular;
+}
+
+function renderCard(r, isNew, isWinner, taxesPaid, interest){
   const cls = isNew ? 'new' : 'old';
   const name = isNew ? 'New Regime' : 'Old Regime';
   const sub = isNew ? 'Sec 115BAC · default regime' : 'With Chapter VI-A deductions';
+  const extraCharges = interest.interest234B + interest.interest234C;
+  const balance = r.totalTax - taxesPaid + extraCharges;
+  const balanceLbl = balance < 0 ? 'Refund due' : 'Balance tax payable';
+  const usedPresumptive = r.method==='44ADA' || r.method==='44AD';
+  const businessLbl = usedPresumptive ? `Business profit — Sec ${r.method} presumptive` : 'Net business profit — regular books';
   return `
   <div class="regime-card ${cls} ${isWinner?'winner':''}">
     <div class="regime-top">
-      <div><div class="regime-name">${name}</div><div class="regime-sub">${sub}</div></div>
+      <div><div class="regime-name">${name}</div><div class="regime-sub">${sub}${usedPresumptive ? ` + Sec ${r.method}` : ''}</div></div>
       ${isWinner ? '<span class="badge">Lower tax</span>' : ''}
     </div>
     <div class="payable">
-      <div class="amt">${inr(r.totalTax)}</div>
-      <div class="lbl">Total tax payable · effective rate ${(r.totalIncome>0 ? (r.totalTax/r.totalIncome*100).toFixed(1) : '0.0')}%</div>
+      <div class="stat liability">
+        <div class="amt">${inr(r.totalTax)}</div>
+        <div class="lbl">Total tax liability · ${(r.totalIncome>0 ? (r.totalTax/r.totalIncome*100).toFixed(1) : '0.0')}% effective rate</div>
+      </div>
+      <div class="stat balance">
+        <div class="amt ${balance<0?'refund':'owe'}">${inr(Math.abs(balance))}</div>
+        <div class="lbl">${balanceLbl}${balance<0?' to you':''}</div>
+      </div>
     </div>
     <div class="ledger">
-      ${ledgerRow('Net business profit', r.business)}
-      ${r.salary>0 ? ledgerRow('Salary, after std. deduction', r.salaryTaxable) : ''}
+      ${ledgerRow(businessLbl, r.business)}
+      ${r.salary>0 ? ledgerRow('Salary, after std. deduction & 80CCD(2)', r.salaryTaxable) : ''}
       ${ledgerRow('House property', r.hp)}
       ${ledgerRow('Other sources', r.other)}
       ${!isNew && r.viaTotal>0 ? ledgerRow('Less: Chapter VI-A deductions', -r.viaTotal) : ''}
@@ -881,18 +1600,41 @@ function renderCard(r, isNew, isWinner){
       ${r.surcharge>0 ? ledgerRow('Surcharge', r.surcharge) : ''}
       ${ledgerRow('Health & education cess (4%)', r.cess)}
       ${ledgerRow('Total tax payable', r.totalTax, {total:true})}
+      ${taxesPaid>0 ? ledgerRow('Less: Taxes already paid (TDS + advance)', -taxesPaid) : ''}
+      ${interest.interest234C>0 ? ledgerRow('Interest u/s 234C (shortfall)', interest.interest234C) : ''}
+      ${interest.interest234B>0 ? ledgerRow('Interest u/s 234B (shortfall)', interest.interest234B) : ''}
+      ${ledgerRow(balanceLbl, balance, {balance:true})}
     </div>
   </div>`;
 }
 
 function calculate(){
   const businessIncome = totalBusinessIncome();
-  const rOld = computeRegime(false, businessIncome);
-  const rNew = computeRegime(true, businessIncome);
+  const taxesPaid = totalTaxesPaid();
+  const grossReceipts = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  const adaOk = adaEligible && grossReceipts > 0 && grossReceipts <= presumptiveThreshold();
+  const presumptiveIncome = Math.round(grossReceipts * presumptiveRate());
+  const section = presumptiveSection();
+
+  const rOld = computeRegimeSmart(false, businessIncome, presumptiveIncome, adaOk, section);
+  const rNew = computeRegimeSmart(true, businessIncome, presumptiveIncome, adaOk, section);
+  const interestOld = computeInterest(rOld.totalTax, rOld.method);
+  const interestNew = computeInterest(rNew.totalTax, rNew.method);
+
+  if(lockedToNew){
+    document.getElementById('compare').innerHTML =
+      `<div style="grid-column:1/-1;">${renderCard(rNew, true, true, taxesPaid, interestNew)}</div>` +
+      `<div class="card" style="grid-column:1/-1;margin:0;"><div class="live-preview" style="border-color:#5C382F;color:var(--danger);">Old Regime isn't shown — you've indicated you've already used your one-time switch back to New, so Old Regime is no longer available to you for business income.</div></div>`;
+    document.getElementById('savingsStrip').innerHTML = `Showing <b>New Regime</b> only, per your regime switch history above.`;
+    renderAdvanceProgress(rNew.totalTax, 'New Regime (only option available)', rNew.method);
+    return;
+  }
+
   const oldWins = rOld.totalTax < rNew.totalTax;
   const newWins = rNew.totalTax < rOld.totalTax;
 
-  document.getElementById('compare').innerHTML = renderCard(rOld, false, oldWins) + renderCard(rNew, true, newWins);
+  document.getElementById('compare').innerHTML =
+    renderCard(rOld, false, oldWins, taxesPaid, interestOld) + renderCard(rNew, true, newWins, taxesPaid, interestNew);
 
   const diff = Math.abs(rOld.totalTax - rNew.totalTax);
   let strip = '';
@@ -902,7 +1644,190 @@ function calculate(){
     const better = oldWins ? 'Old Regime' : 'New Regime';
     strip = `<b>${better}</b> saves you <b>${inr(diff)}</b> this year, compared to the other option.`;
   }
+  const winningMethod = oldWins ? rOld.method : rNew.method;
+  if(adaOk && (winningMethod==='44ADA' || winningMethod==='44AD')){
+    strip += ` Using <b>Sec ${winningMethod}</b> presumptive profit for that comparison — it beats your regular books figure here.`;
+  } else if(adaOk){
+    strip += ` Your regular books still beat Sec ${section} presumptive, so that's what's used.`;
+  }
   document.getElementById('savingsStrip').innerHTML = strip;
+
+  const refRegime = oldWins ? {tax:rOld.totalTax, label:'Old Regime (lower)', method:rOld.method} : {tax:rNew.totalTax, label:'New Regime (lower)', method:rNew.method};
+  renderAdvanceProgress(refRegime.tax, refRegime.label, refRegime.method);
+}
+
+/* ---------- exports ---------- */
+function generatePDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm', format:'a4'});
+  const marginL = 18, pageW = 210, pageH = 297;
+  let y = 20;
+
+  function ensureRoom(needed){
+    if(y + needed > pageH - 18){ doc.addPage(); y = 20; }
+  }
+  function heading(text, size=13){
+    ensureRoom(10);
+    doc.setFont('helvetica','bold'); doc.setFontSize(size);
+    doc.text(text, marginL, y); y += 7;
+    doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  }
+  function row(label, value, opts={}){
+    ensureRoom(6);
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(9.5);
+    doc.text(String(label), marginL, y);
+    doc.text(String(value), 192, y, {align:'right'});
+    y += 5.5;
+  }
+  function tableHead(cols, widths){
+    ensureRoom(7);
+    doc.setFont('helvetica','bold'); doc.setFontSize(8.5);
+    let x = marginL;
+    cols.forEach((c,i) => { doc.text(c, x, y); x += widths[i]; });
+    y += 4.5;
+    doc.setDrawColor(200); doc.line(marginL, y-2.5, 192, y-2.5);
+    doc.setFont('helvetica','normal');
+  }
+  function tableRow(vals, widths, aligns=[]){
+    ensureRoom(5.5);
+    doc.setFontSize(8.5);
+    let x = marginL;
+    vals.forEach((v,i) => {
+      const align = aligns[i] || 'left';
+      doc.text(String(v), align==='right' ? x+widths[i]-2 : x, y, {align: align==='right' ? 'right':'left'});
+      x += widths[i];
+    });
+    y += 5;
+  }
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(17);
+  doc.text('ITR-3 Tax Computation Sheet', marginL, y); y += 6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`FY 2025-26 (AY 2026-27) · Generated ${new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}`, marginL, y);
+  doc.setTextColor(0);
+  y += 10;
+
+  heading('Business Income & Expenses (Schedule BP)');
+  const inc = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  const exp = expenseEntries.reduce((s,e)=>s+e.amount,0);
+  const tds = incomeEntries.reduce((s,e)=>s+(e.tds||0),0);
+  row('Total income (gross)', inr(inc));
+  row('Total expenses', inr(exp));
+  row('Net business profit', inr(inc-exp), {bold:true});
+  row('TDS deducted', inr(tds));
+  row('Net received (after TDS)', inr(inc-tds));
+  y += 3;
+
+  if(incomeEntries.length || expenseEntries.length){
+    heading('Income & Expense Entries', 11);
+    tableHead(['Month','Type','Category','Gross','TDS','Net'], [16,18,58,32,32,20]);
+    const all = [...incomeEntries.map(e=>({...e,type:'Income'})), ...expenseEntries.map(e=>({...e,type:'Expense'}))]
+      .sort((a,b)=> MONTHS.indexOf(a.month)-MONTHS.indexOf(b.month));
+    all.forEach(e => {
+      tableRow([e.month, e.type, e.category.slice(0,32), inr(e.amount), e.type==='Income'&&e.tds?inr(e.tds):'—', e.type==='Income'?inr(e.amount-(e.tds||0)):'—'],
+        [16,18,58,32,32,20], ['left','left','left','right','right','right']);
+    });
+    y += 4;
+  }
+
+  if(advanceTaxEntries.length){
+    heading('Advance Tax Payments', 11);
+    tableHead(['Date','Amount'], [40,40]);
+    [...advanceTaxEntries].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach(a => {
+      tableRow([formatDate(a.date), inr(a.amount)], [40,40], ['left','right']);
+    });
+    y += 4;
+  }
+
+  const businessIncome = totalBusinessIncome();
+  const taxesPaid = totalTaxesPaid();
+  const grossReceiptsPdf = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  const adaOkPdf = adaEligible && grossReceiptsPdf > 0 && grossReceiptsPdf <= presumptiveThreshold();
+  const presumptivePdf = Math.round(grossReceiptsPdf * presumptiveRate());
+  const sectionPdf = presumptiveSection();
+  const rOld = computeRegimeSmart(false, businessIncome, presumptivePdf, adaOkPdf, sectionPdf);
+  const rNew = computeRegimeSmart(true, businessIncome, presumptivePdf, adaOkPdf, sectionPdf);
+  const interestOld = computeInterest(rOld.totalTax, rOld.method);
+  const interestNew = computeInterest(rNew.totalTax, rNew.method);
+
+  [['Old Regime', rOld, interestOld], ['New Regime', rNew, interestNew]].forEach(([label, r, interest]) => {
+    const usedPresumptive = r.method==='44ADA' || r.method==='44AD';
+    heading(`${label}${usedPresumptive ? ` (Sec ${r.method} presumptive)` : ''} — Computation`, 11);
+    row(usedPresumptive ? `Business profit — Sec ${r.method}` : 'Net business profit', inr(r.business));
+    if(r.salary>0) row('Salary, after std. deduction', inr(r.salaryTaxable));
+    row('House property', inr(r.hp));
+    row('Other sources', inr(r.other));
+    if(label==='Old Regime' && r.viaTotal>0) row('Less: Chapter VI-A deductions', '-'+inr(r.viaTotal));
+    row('Net taxable income (slab)', inr(r.slabIncome), {bold:true});
+    row('Tax on slab income', inr(r.taxOnSlab));
+    if(r.specialIncomeGross>0) row('Tax on capital gains', inr(r.specialTax));
+    if(r.rebate>0) row('Less: Rebate u/s 87A', '-'+inr(r.rebate));
+    if(r.surcharge>0) row('Surcharge', inr(r.surcharge));
+    row('Health & education cess (4%)', inr(r.cess));
+    row('Total tax payable', inr(r.totalTax), {bold:true});
+    if(taxesPaid>0) row('Less: Taxes already paid', '-'+inr(taxesPaid));
+    if(interest.interest234C>0) row('Interest u/s 234C', inr(interest.interest234C));
+    if(interest.interest234B>0) row('Interest u/s 234B', inr(interest.interest234B));
+    const balance = r.totalTax - taxesPaid + interest.interest234B + interest.interest234C;
+    row(balance<0 ? 'Refund due' : 'Balance tax payable', inr(Math.abs(balance)), {bold:true});
+    y += 4;
+  });
+
+  ensureRoom(20);
+  doc.setFontSize(7.5); doc.setTextColor(140);
+  doc.text('For planning only — not tax advice. Verify all figures with a chartered accountant before filing.', marginL, y);
+
+  doc.save(`ITR3-tax-sheet-${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+function generateExcel(){
+  const wb = XLSX.utils.book_new();
+
+  const incomeRows = incomeEntries.map(e => ({
+    Month: e.month, Category: e.category, Description: e.desc,
+    'Gross Amount': e.amount, 'TDS Rate %': e.tdsRate||0, 'TDS Amount': e.tds||0, 'Net Received': e.amount-(e.tds||0)
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeRows.length?incomeRows:[{Month:'',Category:'',Description:'',
+    'Gross Amount':'','TDS Rate %':'','TDS Amount':'','Net Received':''}]), 'Income');
+
+  const expenseRows = expenseEntries.map(e => ({ Month: e.month, Category: e.category, Description: e.desc, Amount: e.amount }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(expenseRows.length?expenseRows:[{Month:'',Category:'',Description:'',Amount:''}]), 'Expenses');
+
+  const advRows = advanceTaxEntries.map(a => ({ Date: a.date, Amount: a.amount }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(advRows.length?advRows:[{Date:'',Amount:''}]), 'Advance Tax');
+
+  const businessIncome = totalBusinessIncome();
+  const taxesPaid = totalTaxesPaid();
+  const grossReceiptsXl = incomeEntries.reduce((s,e)=>s+e.amount,0);
+  const adaOkXl = adaEligible && grossReceiptsXl > 0 && grossReceiptsXl <= presumptiveThreshold();
+  const presumptiveXl = Math.round(grossReceiptsXl * presumptiveRate());
+  const sectionXl = presumptiveSection();
+  const rOld = computeRegimeSmart(false, businessIncome, presumptiveXl, adaOkXl, sectionXl);
+  const rNew = computeRegimeSmart(true, businessIncome, presumptiveXl, adaOkXl, sectionXl);
+  const interestOld = computeInterest(rOld.totalTax, rOld.method);
+  const interestNew = computeInterest(rNew.totalTax, rNew.method);
+  const balOld = rOld.totalTax - taxesPaid + interestOld.interest234B + interestOld.interest234C;
+  const balNew = rNew.totalTax - taxesPaid + interestNew.interest234B + interestNew.interest234C;
+
+  const summaryRows = [
+    {Item:'Business income method', 'Old Regime':(rOld.method==='44ADA'||rOld.method==='44AD')?`Sec ${rOld.method}`:'Regular books', 'New Regime':(rNew.method==='44ADA'||rNew.method==='44AD')?`Sec ${rNew.method}`:'Regular books'},
+    {Item:'Net business profit', 'Old Regime':rOld.business, 'New Regime':rNew.business},
+    {Item:'Net taxable income (slab)', 'Old Regime':rOld.slabIncome, 'New Regime':rNew.slabIncome},
+    {Item:'Tax on slab income', 'Old Regime':rOld.taxOnSlab, 'New Regime':rNew.taxOnSlab},
+    {Item:'Rebate u/s 87A', 'Old Regime':rOld.rebate, 'New Regime':rNew.rebate},
+    {Item:'Surcharge', 'Old Regime':rOld.surcharge, 'New Regime':rNew.surcharge},
+    {Item:'Cess (4%)', 'Old Regime':rOld.cess, 'New Regime':rNew.cess},
+    {Item:'Total tax payable', 'Old Regime':Math.round(rOld.totalTax), 'New Regime':Math.round(rNew.totalTax)},
+    {Item:'Taxes already paid', 'Old Regime':taxesPaid, 'New Regime':taxesPaid},
+    {Item:'Interest u/s 234B', 'Old Regime':interestOld.interest234B, 'New Regime':interestNew.interest234B},
+    {Item:'Interest u/s 234C', 'Old Regime':interestOld.interest234C, 'New Regime':interestNew.interest234C},
+    {Item:'Balance tax payable / (Refund)', 'Old Regime':Math.round(balOld), 'New Regime':Math.round(balNew)},
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), 'Summary');
+
+  XLSX.writeFile(wb, `ITR3-tax-sheet-${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 /* ---------- persistence ---------- */
@@ -912,6 +1837,7 @@ function setSaveStatus(state, text){
   document.getElementById('saveStatusText').textContent = text;
 }
 function scheduleSave(){
+  if(!currentUserId) return; // guest mode — nothing to persist
   setSaveStatus('saving','Saving…');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 500);
@@ -919,7 +1845,7 @@ function scheduleSave(){
 async function saveState(){
   if(!currentUserId || !sb) return;
   const data = {
-    age, incomeEntries, expenseEntries,
+    age, lockedToNew, auditType, auditDigital, adaEligible, presumptiveType, incomeEntries, expenseEntries, advanceTaxEntries,
     fields: Object.fromEntries(SIMPLE_IDS.map(id=>[id, document.getElementById(id).value]))
   };
   try{
@@ -935,7 +1861,8 @@ async function saveState(){
 }
 
 async function loadProfileData(){
-  age = 'below60'; incomeEntries = []; expenseEntries = [];
+  age = 'below60'; lockedToNew = false; auditType = 'business'; auditDigital = true; adaEligible = false; presumptiveType = 'business';
+  incomeEntries = []; expenseEntries = []; advanceTaxEntries = [];
   SIMPLE_IDS.forEach(id => document.getElementById(id).value = '');
   try{
     const { data: rows, error } = await sb.from('itr3_profiles').select('data').eq('user_id', currentUserId).maybeSingle();
@@ -943,8 +1870,14 @@ async function loadProfileData(){
     if(rows && rows.data){
       const data = rows.data;
       age = data.age || 'below60';
+      lockedToNew = !!data.lockedToNew;
+      auditType = data.auditType || 'business';
+      auditDigital = data.auditDigital !== undefined ? data.auditDigital : true;
+      adaEligible = !!data.adaEligible;
+      presumptiveType = data.presumptiveType || 'business';
       incomeEntries = data.incomeEntries || [];
       expenseEntries = data.expenseEntries || [];
+      advanceTaxEntries = data.advanceTaxEntries || [];
       Object.entries(data.fields||{}).forEach(([id,val])=>{
         const el = document.getElementById(id);
         if(el && val) el.value = val;
@@ -956,7 +1889,11 @@ async function loadProfileData(){
     setSaveStatus('saved','Ready');
   }
   updateAgePillsUI();
+  updateLockinPillsUI();
+  updateAuditPillsUI();
+  updateAdaPillsUI(); updatePresumptiveTypePillsUI();
   renderEntries();
+  renderAdvanceTax();
   calculate();
 }
 
